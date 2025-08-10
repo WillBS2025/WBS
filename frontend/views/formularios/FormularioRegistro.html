@@ -1,0 +1,109 @@
+//<script type="text/jsx">
+
+
+function FormularioRegistro() {
+
+  const [form] = Form.useForm();
+  const { id } = useParams();
+  const [initialValues, setInitialValues] = useState(undefined);
+
+
+  useEffect(() => {
+    if (id) {
+      google.script.run
+        .withSuccessHandler(res => {
+          const usuario = JSON.parse(res);
+          console.log(usuario);
+          setInitialValues(usuario);
+        }).listarUsuarios(id)
+    }
+  }, [])
+
+
+  const guardarFormulario = (datosFormulario) => {
+
+    notificacionGuardando("Guardando usuario");
+
+
+    if (id) {
+      google.script.run
+        .withSuccessHandler(({ titulo, descripcion }) => {
+          notificacionTareaTerminada(titulo, descripcion);
+          setInitialValues(undefined);
+          form.resetFields();
+        }).actualizarUsuario(id, JSON.stringify(datosFormulario));
+    } else {
+      const id = v4();
+
+      google.script.run
+        .withSuccessHandler(({ titulo, descripcion }) => {
+          notificacionTareaTerminada(titulo, descripcion);
+          form.resetFields();
+        }).guardarUsuario(JSON.stringify({ id, ...datosFormulario }));
+    }
+
+  }
+
+
+  const Formulario = () => {
+    return (
+      <Form
+        initialValues={initialValues}
+        form={form}
+        onFinish={guardarFormulario}
+        layout="vertical">
+
+        <Item
+          name="nombreCompleto"
+          label="Nombre completo"
+          rules={[
+            { required: true, message: "El campo de nombre es requerido para el registro" }
+          ]}>
+          <Input />
+        </Item>
+
+        <Item
+          name="correo"
+          label="Correo"
+          rules={[
+            { type: "email", message: "El formato no coincide con el de un correo valido" },
+            { required: true, message: "El campo de correo es requerido para el registro" }
+          ]}>
+          <Input />
+        </Item>
+
+
+        <Item
+          name="contrasenia"
+          label="Contraseña"
+          rules={[
+            { required: true, message: "El campo de contraseña es requerido para el registro" }
+          ]}>
+          <Password />
+        </Item>
+
+
+        <Item className="text-center">
+          <Button htmlType="submit">Guardar</Button>
+        </Item>
+
+      </Form>
+    )
+  }
+
+  return (
+    <div className="px-20">
+      <h2 className="text-center font-bold text-xl my-6">Formulario de Registro</h2>
+      {
+        (id && initialValues)
+          ? <Formulario />
+          : <Formulario />
+      }
+
+    </div>
+  )
+}
+
+
+
+//</script>
