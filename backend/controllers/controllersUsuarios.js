@@ -1,0 +1,22 @@
+function guardarUsuario(usuario){
+
+    try {
+        const sheetUsuarios= obtenerSheet(env_().SH_REGISTRO_USUARIOS);
+        Insert(JSON.parse(usuario), sheetUsuarios);
+        return {
+            titulo: "Registro Exitoso!! ",
+            descripcion: "Ya se encuentra el usuario guardado en la base de datos.",
+        };
+    } catch (error) {
+        return {
+            titulo: "Ocurrio un Error!! " + error,
+            descripcion: "Por favor contacte a soporte.",
+        };
+    }
+
+}
+
+function listarUsuarios(id = undefined) {
+  //return obtenerDatos(env_().SH_REGISTRO_USUARIOS);
+  return JSON.stringify(_read(obtenerSheet(env_().SH_REGISTRO_USUARIOS), id));
+}
