@@ -37,3 +37,24 @@ function actualizarUsuario(id, datos) {
     };
   }
 }
+
+/**
+ * Elimina un usuario de la base de datos por su ID.
+ * @param {string} id El ID del usuario a eliminar.
+ * @return {object} Un objeto con un mensaje de éxito o error.
+ */
+function eliminarUsuario(id) {
+  try {
+    const sheetUsuarios = obtenerSheet(env_().SH_REGISTRO_USUARIOS);
+    Delete(id, sheetUsuarios); // Llama a la nueva función de eliminación.
+    return {
+      titulo: "Eliminado correctamente",
+      descripcion: "El usuario ha sido eliminado de la base de datos.",
+    };
+  } catch (error) {
+    return {
+      titulo: "Ops ha ocurrido un error! " + error,
+      descripcion: "Por favor contacte a soporte.",
+    };
+  }
+}
