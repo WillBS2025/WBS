@@ -1,0 +1,146 @@
+
+//<script type="text/jsx">
+
+function Productos() {
+    const [dataSource, setDataSource] = useState([]);
+    const [isModalVisible, setIsModalVisible] = useState(false);
+    const [productoSeleccionado, setProductoSeleccionado] = useState(null);
+    const [form] = antd.Form.useForm(); // Formulario Ant Design
+
+    // Listar productos
+    function listarProductos() {
+        google.script.run
+            .withSuccessHandler(res => {
+                const productos = JSON.parse(res);
+                const arreglo = productos.map(producto => ({
+                    key: producto.id,
+                    ...producto,
+                    acciones: (
+                        <Space>
+                            <Button onClick={() => abrirModalEditar(producto)}>Editar</Button>
+                            <Button type="danger" onClick={() => eliminarProducto(producto.id)}>Eliminar</Button>
+                        </Space>
+                    ),
+                }));
+                setDataSource(arreglo);
+            })
+            .listarProductos();
+    }
+
+    // Abrir modal para nuevo producto
+    function abrirModalNuevo() {
+        setProductoSeleccionado(null);
+        form.resetFields();
+        setIsModalVisible(true);
+    }
+
+    // Abrir modal para editar
+    function abrirModalEditar(producto) {
+        setProductoSeleccionado(producto);
+        form.setFieldsValue(producto);
+        setIsModalVisible(true);
+    }
+
+    // Guardar producto (crear o editar)
+    function guardarProducto(valores) {
+        notificacionGuardando(productoSeleccionado ? "Actualizando producto" : "Creando producto");
+
+        if (productoSeleccionado) {
+            google.script.run
+                .withSuccessHandler(({ titulo, descripcion }) => {
+                    notificacionTareaTerminada(titulo, descripcion);
+                    setIsModalVisible(false);
+                    listarProductos();
+                })
+                .actualizarProducto({ id: productoSeleccionado.id, ...valores });
+        } else {
+            google.script.run
+                .withSuccessHandler(({ titulo, descripcion }) => {
+                    notificacionTareaTerminada(titulo, descripcion);
+                    setIsModalVisible(false);
+                    listarProductos();
+                })
+                .crearProducto(valores);
+        }
+    }
+
+    // Eliminar
+    function eliminarProducto(id) {
+        Swal.fire({
+            title: '¿Estás seguro?',
+            text: "¡No podrás revertir esto!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                notificacionGuardando("Eliminando producto");
+                google.script.run
+                    .withSuccessHandler(({ titulo, descripcion }) => {
+                        notificacionTareaTerminada(titulo, descripcion);
+                        listarProductos();
+                    })
+                    .eliminarProducto(id);
+            }
+        });
+    }
+
+    useEffect(listarProductos, []);
+
+    const columns = [
+        { title: '#', dataIndex: 'key', key: 'index', render: (text, record, index) => index + 1 },
+        { title: 'Nombre', dataIndex: 'nombreProducto', key: 'nombreProducto' },
+        { title: 'Precio', dataIndex: 'precio', key: 'precio' },
+        { title: 'Stock', dataIndex: 'stock', key: 'stock' },
+        { title: 'Fecha Entrada', dataIndex: 'fechaEntrada', key: 'fechaEntrada' },
+        { title: 'Descripción', dataIndex: 'descripcion', key: 'descripcion' },
+        { title: 'Sucursal', dataIndex: 'nombreSucursal', key: 'nombreSucursal' },
+        { title: 'Acciones', dataIndex: 'acciones', key: 'acciones' },
+    ];
+
+    return (
+        <React.Fragment>
+            <Button type="primary" style={{ marginBottom: 16 }} onClick={abrirModalNuevo}>
+                Nuevo Producto
+            </Button>
+
+            <Table dataSource={dataSource} columns={columns} />
+
+            <Modal
+                title={productoSeleccionado ? "Editar Producto" : "Nuevo Producto"}
+                visible={isModalVisible}
+                onCancel={() => setIsModalVisible(false)}
+                footer={null}
+            >
+                <Form form={form} layout="vertical" onFinish={guardarProducto}>
+                    <Form.Item name="nombreProducto" label="Nombre" rules={[{ required: true, message: 'Ingrese el nombre' }]}>
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="precio" label="Precio" rules={[{ required: true, message: 'Ingrese el precio' }]}>
+                        <Input type="number" />
+                    </Form.Item>
+                    <Form.Item name="stock" label="Stock" rules={[{ required: true, message: 'Ingrese el stock' }]}>
+                        <Input type="number" />
+                    </Form.Item>
+                    <Form.Item name="fechaEntrada" label="Fecha de Entrada" rules={[{ required: true, message: 'Ingrese la fecha' }]}>
+                        <Input type="date" />
+                    </Form.Item>
+                    <Form.Item name="descripcion" label="Descripción">
+                        <Input.TextArea />
+                    </Form.Item>
+                    <Form.Item name="nombreSucursal" label="Sucursal">
+                        <Input />
+                    </Form.Item>
+                    <Button type="primary" htmlType="submit" block>
+                        Guardar
+                    </Button>
+                </Form>
+            </Modal>
+        </React.Fragment>
+    );
+}
+//</script>
+
