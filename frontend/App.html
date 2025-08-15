@@ -1,12 +1,17 @@
 //<script type="text/jsx">
 
-function App() {
+  const { HashRouter } = ReactRouterDOM; // o BrowserRouter si ya lo usas
 
-  return (
-    <Routes />
-  )
-}
+  function App() {
+    return (
+      <HashRouter>
+        <Layout>
+          <Routes />
+        </Layout>
+      </HashRouter>
+    );
+  }
 
-ReactDOM.render(<App />, document.getElementById('root'));
+  ReactDOM.render(<App />, document.getElementById('root'));
 
 //</script>

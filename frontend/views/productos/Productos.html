@@ -101,46 +101,66 @@ function Productos() {
         { title: 'Acciones', dataIndex: 'acciones', key: 'acciones' },
     ];
 
-    return (
+            return (
         <React.Fragment>
-            <Button type="primary" style={{ marginBottom: 16 }} onClick={abrirModalNuevo}>
+            <div className="card" style={{ borderRadius: 12, overflow: 'hidden' }}>
+            {/* Header de la card */}
+            <div className="card-header d-flex align-items-center justify-content-between">
+                <h3 className="card-title m-0">
+                <i className="fas fa-box mr-2"></i> Inventario de Productos
+                </h3>
+
+                <Button type="primary" onClick={abrirModalNuevo}>
+                <i className="fas fa-plus" style={{ marginRight: 8 }}></i>
                 Nuevo Producto
-            </Button>
+                </Button>
+            </div>
 
-            <Table dataSource={dataSource} columns={columns} />
+            {/* Cuerpo de la card */}
+            <div className="card-body" style={{ background: '#fff' }}>
+                <Table
+                dataSource={dataSource}
+                columns={columns}
+                pagination={{ pageSize: 10 }}
+                />
+            </div>
+            </div>
 
+            {/* Tu modal (crear/editar) tal como ya lo tienes */}
             <Modal
-                title={productoSeleccionado ? "Editar Producto" : "Nuevo Producto"}
-                visible={isModalVisible}
-                onCancel={() => setIsModalVisible(false)}
-                footer={null}
+            title={productoSeleccionado ? "Editar Producto" : "Nuevo Producto"}
+            visible={isModalVisible}
+            onCancel={() => setIsModalVisible(false)}
+            footer={null}
             >
-                <Form form={form} layout="vertical" onFinish={guardarProducto}>
-                    <Form.Item name="nombreProducto" label="Nombre" rules={[{ required: true, message: 'Ingrese el nombre' }]}>
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="precio" label="Precio" rules={[{ required: true, message: 'Ingrese el precio' }]}>
-                        <Input type="number" />
-                    </Form.Item>
-                    <Form.Item name="stock" label="Stock" rules={[{ required: true, message: 'Ingrese el stock' }]}>
-                        <Input type="number" />
-                    </Form.Item>
-                    <Form.Item name="fechaEntrada" label="Fecha de Entrada" rules={[{ required: true, message: 'Ingrese la fecha' }]}>
-                        <Input type="date" />
-                    </Form.Item>
-                    <Form.Item name="descripcion" label="Descripción">
-                        <Input.TextArea />
-                    </Form.Item>
-                    <Form.Item name="nombreSucursal" label="Sucursal">
-                        <Input />
-                    </Form.Item>
-                    <Button type="primary" htmlType="submit" block>
-                        Guardar
-                    </Button>
-                </Form>
+            <Form form={form} layout="vertical" onFinish={guardarProducto}>
+                <Form.Item name="nombreProducto" label="Nombre" rules={[{ required: true, message: 'Ingrese el nombre' }]}>
+                <Input />
+                </Form.Item>
+                <Form.Item name="precio" label="Precio" rules={[{ required: true, message: 'Ingrese el precio' }]}>
+                <Input type="number" />
+                </Form.Item>
+                <Form.Item name="stock" label="Stock" rules={[{ required: true, message: 'Ingrese el stock' }]}>
+                <Input type="number" />
+                </Form.Item>
+                <Form.Item name="fechaEntrada" label="Fecha de Entrada" rules={[{ required: true, message: 'Ingrese la fecha' }]}>
+                <Input type="date" />
+                </Form.Item>
+                <Form.Item name="descripcion" label="Descripción">
+                <Input.TextArea />
+                </Form.Item>
+                <Form.Item name="nombreSucursal" label="Sucursal">
+                <Input />
+                </Form.Item>
+
+                <Button type="primary" htmlType="submit" block>
+                Guardar
+                </Button>
+            </Form>
             </Modal>
         </React.Fragment>
-    );
+        );
+
 }
 //</script>
 
