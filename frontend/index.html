@@ -1,74 +1,33 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <?!= include('frontend/config/cdn') ?>
-    <!-- AdminLTE (CSS + FontAwesome) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-
-    <!-- jQuery + Bootstrap (requeridos por AdminLTE) -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/js/bootstrap.bundle.min.js"></script>
-
-    <!-- AdminLTE JS -->
-    <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
-
-    <style>
-    .main-header.navbar { 
-      background: linear-gradient(90deg, #0b2a4a, #123f73); 
-      color: #fff;
-    }
-    .brand-link {
-      background: #0b2a4a; color:#fff !important; font-weight:600;
-    }
-    .brand-link .brand-image { opacity: .9 }
-    /* AntD en AdminLTE */
-    .content-wrapper .ant-table { background: #fff; }
-    .content-wrapper .ant-btn { border-radius: 8px; }
-    </style>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/17.0.2/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/17.0.2/umd/react-dom.production.min.js"></script>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.26.0/babel.min.js"></script>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-router-dom/5.2.0/react-router-dom.min.js"></script>
-    
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/antd/4.18.5/antd.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/antd/4.18.5/antd-with-locales.min.js"></script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <?!= include('frontend/config/cdn') ?>
 </head>
-<body class="hold-transition sidebar-mini layout-fixed">
-  <div id="root"></div>
+<body>
+    <div id="root"></div>
 </body>
 
 <components style="display: none;">
-   <!-- importaciones -->
+    <!-- importaciones -->
 
-  <!-- constantes -->
+    <!-- constantes -->
     <?!= include('frontend/config/constantesCdn') ?>
 
     <!-- rutas -->
     <?!= include('frontend/routes/Routes') ?>
 
-    <!-- helpers -->
-    <?!= include('frontend/helpers/modalesNotificaciones') ?>
-
     <!-- vistas -->
     <?!= include('frontend/views/Inicio') ?>
-    <?!= include('frontend/views/usuarios/Usuarios') ?>
     <?!= include('frontend/views/formularios/FormularioRegistro') ?>
-    <?!= include('frontend/views/productos/Productos') ?>
+    <?!= include('frontend/views/Login') ?>
+    <?!= include('frontend/views/Empleados') ?>
     <?!= include('frontend/components/Header') ?>
-    <?!= include('frontend/components/Layout') ?>
-
-
-  <!-- componente raiz -->
-  <?!= include('frontend/App') ?>
+    <?!= include('frontend/components/Sidebar') ?> 
+    <!-- componente raiz -->
+    <?!= include('frontend/App') ?>
 
 </components>
 

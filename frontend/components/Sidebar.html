@@ -1,0 +1,32 @@
+//<script type="text/jsx">
+
+function Sidebar({ collapsed, onCollapse, handleLogout }) {
+    return (
+        <Layout.Sider collapsible collapsed={collapsed} onCollapse={onCollapse}
+                      breakpoint="lg" // Se colapsa en pantallas grandes (lg)
+                      collapsedWidth="0" // Se oculta completamente en modo colapsado para pantallas pequeñas
+                      style={{ background: '#001529' }} // Color de fondo del sidebar
+        >
+            {/* Espacio para un posible logo */}
+            <div className="logo-container" style={{ padding: '16px', display: 'flex', alignItems: 'center' }}>
+                <h1 style={{ color: 'white', margin: 0, fontSize: '24px' }}>Wilito BarberShop</h1>
+            </div>
+            <Menu theme="dark" mode="inline" defaultSelectedKeys={['1']}>
+                <Menu.Item key="1" icon={<icons.HomeOutlined />}>
+                    <Link to="/" onClick={() => onCollapse(true)}>Inicio</Link>
+                </Menu.Item>
+                <Menu.Item key="2" icon={<icons.FormOutlined />}>
+                    <Link to="/formularioRegistro" onClick={() => onCollapse(true)}>Registro</Link>
+                </Menu.Item>
+                <Menu.Item key="3" icon={<icons.TeamOutlined />}>
+                    <Link to="/empleados" onClick={() => onCollapse(true)}>Empleados</Link>
+                </Menu.Item>
+                <Menu.Item key="3" icon={<icons.LogoutOutlined />} onClick={handleLogout}>
+                    Cerrar Sesión
+                </Menu.Item>
+            </Menu>
+        </Layout.Sider>
+    );
+}
+
+//</script>

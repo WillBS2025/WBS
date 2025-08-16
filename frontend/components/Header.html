@@ -1,40 +1,30 @@
 //<script type="text/jsx">
 
-function Header() {
-
-  return (
-    <div className="shadow-2xl p-5">
-        <h2 className="text-2xl font-bold mb-3">Proyecto desde cero</h2>
-        <NavLink
-          exact
-          activeClassName="bg-blue-500"
-          className="mr-3 px-3 py-1 bg-blue-700 text-white rounded-2xl"
-          to="/">
-          Inicio
-        </NavLink>
-        <NavLink
-          exact
-          activeClassName="bg-blue-500"
-          className="mr-3 px-3 py-1 bg-blue-700 text-white rounded-2xl"
-          to="/formularioRegistro">
-          Formulario registro
-        </NavLink>
-        <NavLink
-          exact
-          activeClassName="bg-blue-500"
-          className="mr-3 px-3 py-1 bg-blue-700 text-white rounded-2xl"
-          to="/usuarios">
-          Usuarios
-        </NavLink>
-        <NavLink
-          exact
-          activeClassName="bg-blue-500"
-          className="mr-3 px-3 py-1 bg-blue-700 text-white rounded-2xl"
-          to="/productos">
-          Productos
-        </NavLink>
-    </div>
-  )
+function Header({ onLogout }) {
+    return (
+        <div className="shadow-2xl p-5 flex justify-between items-center">
+            <h2 className="text-2xl font-bold">Proyecto desde cero</h2>
+            <div>
+                {/* Estos NavLink ya no se usan para la navegación principal */}
+                <NavLink
+                    exact
+                    activeClassName="bg-blue-500"
+                    className="mr-3 px-3 py-1 bg-blue-700 text-white rounded-2xl"
+                    to="/">
+                    Inicio
+                </NavLink>
+                <NavLink
+                    exact
+                    activeClassName="bg-blue-500"
+                    className="mr-3 px-3 py-1 bg-blue-700 text-white rounded-2xl"
+                    to="/formularioRegistro">
+                    Formulario registro
+                </NavLink>
+                {/* El botón de Cerrar Sesión ahora está en el Sidebar */}
+                {/* <Button type="primary" danger onClick={onLogout}>Cerrar Sesión</Button> */}
+            </div>
+        </div>
+    )
 }
 
 

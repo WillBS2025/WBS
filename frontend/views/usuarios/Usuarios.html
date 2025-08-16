@@ -7,30 +7,6 @@ function Usuarios() {
       useEffect(listarUsuarios, []);
       const history = useHistory();
 
-      function eliminarUsuario(id) {
-    // Muestra una notificación de confirmación antes de eliminar.
-        Swal.fire({
-          title: '¿Estás seguro?',
-          text: "¡No podrás revertir esto!",
-          icon: 'warning',
-          showCancelButton: true,
-          confirmButtonColor: '#3085d6',
-          cancelButtonColor: '#d33',
-          confirmButtonText: 'Sí, eliminar',
-          cancelButtonText: 'Cancelar'
-        }).then((result) => {
-          if (result.isConfirmed) {
-            notificacionGuardando("Eliminando usuario");
-            google.script.run
-              .withSuccessHandler(({ titulo, descripcion }) => {
-                notificacionTareaTerminada(titulo, descripcion);
-                listarUsuarios(); // Refresca la tabla después de eliminar.
-              }).eliminarUsuario(id); // Llama a la función del backend.
-          }
-        });
-      }
-
-
       function listarUsuarios() {
         google.script.run
           .withSuccessHandler(res => {
@@ -40,20 +16,14 @@ function Usuarios() {
             usuarios.map(usuario => {
               arreglo.push({
                 key: usuario.id,
-                ... usuario,
-                acciones: 
-                 (<Space>
-                    <Button onClick={() => {
+                ...usuario,
+                acciones:
+                  <Button
+                    onClick={() => {
                       history.push("/formularioRegistro/" + usuario.id);
-                    }}>Editar</Button>
-                    {/* NUEVO BOTÓN DE ELIMINAR */}
-                    <Button
-                      type="danger" // Estilo de botón de Ant Design.
-                      onClick={() => eliminarUsuario(usuario.id)}
-                    >
-                      Eliminar
-                    </Button>
-                  </Space>),
+                    }}>
+                    Editar
+                  </Button>
               })
             })
 

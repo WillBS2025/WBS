@@ -1,18 +1,80 @@
 //<script type="text/jsx">
 
 function Routes() {
-  return (
-    <Router>
-      <Header />
-      <Redirect to="/" />
-      <Switch>
-        <Route exact path="/" component={Inicio} />
-        <Route exact path="/formularioRegistro/:id?" component={FormularioRegistro} />
-        <Route exact path="/usuarios" component={Usuarios} />
-        <Route exact path="/productos" component={Productos} />
-      </Switch>
-    </Router>
-  );
+    const [isAuthenticated, setIsAuthenticated] = useState(localStorage.getItem('isAuthenticated') === 'true');
+    const history = useHistory();
+    const [collapsed, setCollapsed] = useState(false); // Estado para el sidebar
+
+    useEffect(() => {
+        localStorage.setItem('isAuthenticated', isAuthenticated);
+    }, [isAuthenticated]);
+
+    const handleLogin = (success) => {
+        setIsAuthenticated(success);
+        if (success) {
+            history.push("/");
+        }
+    };
+
+    const handleLogout = () => {
+        setIsAuthenticated(false);
+        localStorage.removeItem('isAuthenticated');
+        history.push("/login");
+    };
+
+    // Función para manejar el colapso del sidebar
+    const onCollapse = (collapsed) => {
+        setCollapsed(collapsed);
+    };
+
+    return (
+        <Router>
+            {isAuthenticated ? (
+                <Layout style={{ minHeight: '100vh' }}>
+                    {/* Incluimos el componente Sidebar aquí */}
+                    <Sidebar
+                        collapsed={collapsed}
+                        onCollapse={onCollapse}
+                        handleLogout={handleLogout}
+                    />
+
+                    <Layout className="site-layout">
+                        {/* Puedes añadir un Header superior aquí si lo deseas para mostrar el título, etc. */}
+                        <Layout.Header className="site-layout-background" style={{ padding: 0, background: '#fff' }}>
+                            <div className="flex justify-between items-center h-full px-4">
+                                <h2 className="text-2xl font-bold">Mi Aplicación</h2>
+                                {/* Si quisieras un header con info del usuario, aquí iría */}
+                            </div>
+                        </Layout.Header>
+                        <Layout.Content style={{ margin: '0 16px' }}>
+                            <Breadcrumb style={{ margin: '16px 0' }}>
+                                {/* Puedes agregar Breadcrumbs dinámicamente según la ruta */}
+                            </Breadcrumb>
+                            <div className="site-layout-background" style={{ padding: 24, minHeight: 360 }}>
+                                <Switch>
+                                    <Route exact path="/" component={Inicio} />
+                                    <Route exact path="/formularioRegistro" component={FormularioRegistro} />
+                                    <Route exact path="/empleados" component={Empleados} />
+                                    <Redirect to="/" />
+                                </Switch>
+                            </div>
+                        </Layout.Content>
+                        <Layout.Footer style={{ textAlign: 'center' }}>
+                            Proyecto Apps Script ©{new Date().getFullYear()} Creado con Ant Design
+                        </Layout.Footer>
+                    </Layout>
+                </Layout>
+            ) : (
+                // Muestra solo el componente de Login si no está autenticado
+                <Switch>
+                    <Route exact path="/login">
+                        <Login onLogin={handleLogin} />
+                    </Route>
+                    <Redirect to="/login" /> {/* Redirige siempre al login si no está autenticado */}
+                </Switch>
+            )}
+        </Router>
+    );
 }
 
 //</script>

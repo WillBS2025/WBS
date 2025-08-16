@@ -8,37 +8,40 @@ const { useState, useLayoutEffect, useEffect, useRef, createContext, useContext,
 
 { /* constantes ant design */ }
 const {
-  Avatar,
-  Button,
-  Checkbox,
-  Collapse,
-  Card,
-  Col,
-  ConfigProvider,
-  Drawer,
-  DatePicker,
-  Divider,
-  Form,
-  Input,
-  InputNumber,
-  Image,
-  List,
-  Modal,
-  message,
-  notification,
-  PageHeader,
-  Popover,
-  Rate,
-  Select,
-  Space,
-  Spin,
-  Steps,
-  Table,
-  Tabs,
-  Tag,
-  TimePicker,
-  Row,
-  Upload
+    Avatar,
+    Button,
+    Checkbox,
+    Collapse,
+    Card,
+    Col,
+    ConfigProvider,
+    Drawer,
+    DatePicker,
+    Divider,
+    Form,
+    Input,
+    InputNumber,
+    Image,
+    List,
+    Modal,
+    message,
+    notification,
+    PageHeader,
+    Popover,
+    Rate,
+    Select,
+    Space,
+    Spin,
+    Steps,
+    Table,
+    Tabs,
+    Tag,
+    TimePicker,
+    Row,
+    Upload,
+    Layout,       // Para el Layout y Sidebar
+    Menu,         // Para el menú del Sidebar
+    Breadcrumb    // Para el breadcrumb en el contenido
 } = antd;
 
 
@@ -53,7 +56,25 @@ const { TabPane } = Tabs;
 const { Column, ColumnGroup } = Table;
 
 { /* constantes iconos ant design */ }
-const { SearchOutlined, LoadingOutlined, UploadOutlined, MenuOutlined, SubnodeOutlined, PlusOutlined, MinusCircleOutlined, VerticalAlignBottomOutlined, MessageOutlined, LikeOutlined, StarOutlined } = icons;
+const { 
+    SearchOutlined,
+    LoadingOutlined,
+    UploadOutlined,
+    MenuOutlined,
+    SubnodeOutlined,
+    PlusOutlined,
+    MinusCircleOutlined,
+    VerticalAlignBottomOutlined,
+    MessageOutlined,
+    LikeOutlined,
+    StarOutlined,
+    UserOutlined,
+    LockOutlined,
+    HomeOutlined,    // Para el icono de Inicio en Sidebar
+    FormOutlined,    // Para el icono de Registro en Sidebar
+    LogoutOutlined,   // Para el icono de Cerrar Sesión en Sidebar
+    TeamOutlined, // Nuevo: para Empleados
+} = icons;
 
 const { v4 } = uuid;
 //</script>

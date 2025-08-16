@@ -1,0 +1,74 @@
+//<script type="text/jsx">
+
+function Login({ onLogin }) {
+    const [form] = Form.useForm();
+    const [loading, setLoading] = useState(false);
+
+    const onFinish = (values) => {
+        setLoading(true);
+        google.script.run
+            .withSuccessHandler((resp) => {
+                setLoading(false);
+                if (resp.success) {
+                    message.success(resp.message);
+                    onLogin(true); // Informa al componente padre que el login fue exitoso
+                } else {
+                    Modal.error({
+                        title: 'Error de autenticación',
+                        content: resp.message,
+                    });
+                    onLogin(false);
+                }
+            })
+            .withFailureHandler((error) => {
+                setLoading(false);
+                Modal.error({
+                    title: 'Error de comunicación',
+                    content: 'Ha ocurrido un error al intentar iniciar sesión. Por favor, inténtalo de nuevo más tarde.',
+                });
+                console.error("Error al llamar a Apps Script:", error);
+            })
+            .verificarCredenciales(values.correo, values.contrasenia);
+    };
+
+    return (
+        <div className="flex justify-center items-center min-h-screen bg-gray-100">
+            <Card title="Iniciar Sesión" className="w-96 shadow-lg rounded-lg">
+                <Form
+                    form={form}
+                    name="login"
+                    initialValues={{ remember: true }}
+                    onFinish={onFinish}
+                    layout="vertical"
+                >
+                    <Item
+                        label="Correo"
+                        name="correo"
+                        rules={[
+                            { required: true, message: '¡Por favor ingresa tu correo!' },
+                            { type: 'email', message: '¡El formato del correo no es válido!' },
+                        ]}
+                    >
+                        <Input prefix={<icons.UserOutlined className="site-form-item-icon" />} placeholder="Correo" />
+                    </Item>
+
+                    <Item
+                        label="Contraseña"
+                        name="contrasenia"
+                        rules={[{ required: true, message: '¡Por favor ingresa tu contraseña!' }]}
+                    >
+                        <Input.Password prefix={<icons.LockOutlined className="site-form-item-icon" />} placeholder="Contraseña" />
+                    </Item>
+
+                    <Item>
+                        <Button type="primary" htmlType="submit" loading={loading} block>
+                            Iniciar Sesión
+                        </Button>
+                    </Item>
+                </Form>
+            </Card>
+        </div>
+    );
+}
+
+//</script>
