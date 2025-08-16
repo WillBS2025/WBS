@@ -21,7 +21,16 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
                 <Menu.Item key="3" icon={<icons.TeamOutlined />}>
                     <Link to="/empleados" onClick={() => onCollapse(true)}>Empleados</Link>
                 </Menu.Item>
-                <Menu.Item key="3" icon={<icons.LogoutOutlined />} onClick={handleLogout}>
+                <Menu.Item key="4" icon={<icons.BarcodeOutlined />}>
+                    <Link to="/inventario" onClick={() => onCollapse(true)}>Inventario</Link>
+                </Menu.Item>
+                <Menu.Item key="5" icon={<icons.ShoppingCartOutlined />}>
+                    <Link to="/ventas" onClick={() => onCollapse(true)}>Ventas</Link>
+                </Menu.Item>
+                <Menu.Item key="6" icon={<icons.LineChartOutlined />}>
+                    <Link to="/reportes" onClick={() => onCollapse(true)}>Reportes</Link>
+                </Menu.Item>
+                <Menu.Item key="7" icon={<icons.LogoutOutlined />} onClick={handleLogout}>
                     Cerrar Sesión
                 </Menu.Item>
             </Menu>
