@@ -1,0 +1,376 @@
+//<script type="text/jsx">
+function Productos() {
+  const { useState, useEffect } = React;
+  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, message } = antd;
+
+  // ===== Estado general =====
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Sucursales para el Select
+  const [sucursales, setSucursales] = useState([]);
+
+  // Modal + formulario
+  const [form] = Form.useForm();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('create'); // 'create' | 'edit'
+
+  // Eliminar
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [toDelete, setToDelete] = useState(null);
+
+  // ===== Helpers Precio (L.) =====
+  function formatHNL(value) {
+    var n = Number(value);
+    if (!isFinite(n)) n = 0;
+    try {
+      var num = new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+        useGrouping: true
+      }).format(n);
+      return 'L.' + num;
+    } catch (e) {
+      var raw = n.toFixed(2);
+      var withCommas = raw.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      return 'L.' + withCommas;
+    }
+  }
+
+  // ===== Helpers Fecha =====
+  function parseFechaFlexible(v) {
+    if (v instanceof Date) return v;
+    if (typeof v === 'number') return new Date(v);
+    if (typeof v === 'string') {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(v + 'T00:00:00');
+      var m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (m) {
+        var d = parseInt(m[1], 10), mo = parseInt(m[2], 10) - 1, y = parseInt(m[3], 10);
+        if (y < 100) y += 2000;
+        return new Date(y, mo, d);
+      }
+      var d2 = new Date(v);
+      if (!isNaN(d2)) return d2;
+      return null;
+    }
+    var d0 = new Date(v);
+    return isNaN(d0) ? null : d0;
+  }
+  function formatYMD(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '/' + m + '/' + day;
+  }
+  function formatInputDate(d) {
+    if (!d) return '';
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  // ===== Data productos =====
+  function cargar() {
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        try {
+          var arr = JSON.parse(res) || [];
+          var normalizados = arr.map(function (r, i) {
+            return Object.assign({}, r, { key: (r && r.id != null ? r.id : i) });
+          });
+          setData(normalizados);
+        } catch (e) {
+          Modal.error({ title: 'Error', content: 'No se pudo leer la respuesta del servidor.' });
+        } finally {
+          setLoading(false);
+        }
+      })
+      .withFailureHandler(function (err) {
+        setLoading(false);
+        Modal.error({ title: 'Error de servidor', content: String((err && err.message) || err) });
+      })
+      .listarProductos();
+  }
+
+  // ===== Data sucursales =====
+  function cargarSucursales() {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        try {
+          var r = typeof res === 'string' ? JSON.parse(res) : res;
+          if (r && r.ok && r.sucursales) setSucursales(r.sucursales);
+          else setSucursales([]);
+        } catch (e) { setSucursales([]); }
+      })
+      .withFailureHandler(function () { setSucursales([]); })
+      .listarSucursalesActivas();
+  }
+
+  // Inicial: productos + sucursales
+  useEffect(function () {
+    cargar();
+    cargarSucursales();
+  }, []);
+
+  // ¿Existe en opciones de sucursales?
+  function isInSucursalOptions(value) {
+    for (var i = 0; i < sucursales.length; i++) {
+      if (sucursales[i].nombreSucursal === value) return true;
+    }
+    return false;
+  }
+
+  // ===== Modals =====
+  function abrirNuevo() {
+    setModalMode('create');
+    cargarSucursales();  // refresca lista por si cambió en Sheets
+    form.resetFields();
+    setModalOpen(true);
+  }
+
+  function abrirEditar(rec) {
+    setModalMode('edit');
+    cargarSucursales();  // refresca lista por si cambió en Sheets
+    var d = parseFechaFlexible(rec.fechaEntrada);
+
+    // Si la sucursal guardada ya no está activa, forzamos a elegir una válida
+    var sucPreset = isInSucursalOptions(rec.nombreSucursal) ? rec.nombreSucursal : undefined;
+
+    form.setFieldsValue({
+      id: rec.id,
+      nombreProducto: rec.nombreProducto || '',
+      precio: Number(rec.precio || 0),
+      stock: Number(rec.stock || 0),
+      fechaEntrada: d ? formatInputDate(d) : '',
+      descripcion: rec.descripcion || '',
+      nombreSucursal: sucPreset
+    });
+    setModalOpen(true);
+  }
+
+  function abrirEliminar(rec) {
+    setToDelete(rec);
+    setDeleteOpen(true);
+  }
+
+  // ===== Guardar (crear/editar) =====
+  function onSubmit(values) {
+    var payload = {
+      id: values.id,
+      nombreProducto: values.nombreProducto,
+      precio: Number(values.precio || 0),
+      stock: Number(values.stock || 0),
+      fechaEntrada: values.fechaEntrada || '',
+      descripcion: values.descripcion || '',
+      nombreSucursal: values.nombreSucursal || ''
+    };
+
+    setLoading(true);
+    if (modalMode === 'create') {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setLoading(false);
+          try {
+            var r = typeof res === 'string' ? JSON.parse(res) : res;
+            if (r && r.ok) {
+              message.success('Producto creado');
+              setModalOpen(false);
+              cargar();
+            } else {
+              Modal.error({ title: 'No se pudo crear', content: (r && r.message) || 'Error desconocido' });
+            }
+          } catch (e) {
+            Modal.error({ title: 'Error', content: 'Respuesta inválida del servidor.' });
+          }
+        })
+        .withFailureHandler(function (err) {
+          setLoading(false);
+          Modal.error({ title: 'Error de servidor', content: String((err && err.message) || err) });
+        })
+        .crearProducto(payload);
+    } else {
+      google.script.run
+        .withSuccessHandler(function (res) {
+          setLoading(false);
+          try {
+            var r = typeof res === 'string' ? JSON.parse(res) : res;
+            if (r && r.ok) {
+              message.success('Producto actualizado');
+              setModalOpen(false);
+              cargar();
+            } else {
+              Modal.error({ title: 'No se pudo actualizar', content: (r && r.message) || 'Error desconocido' });
+            }
+          } catch (e) {
+            Modal.error({ title: 'Error', content: 'Respuesta inválida del servidor.' });
+          }
+        })
+        .withFailureHandler(function (err) {
+          setLoading(false);
+          Modal.error({ title: 'Error de servidor', content: String((err && err.message) || err) });
+        })
+        .actualizarProducto(payload);
+    }
+  }
+
+  // ===== Eliminar =====
+  function confirmarEliminar() {
+    if (!toDelete) { setDeleteOpen(false); return; }
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        setLoading(false);
+        try {
+          var r = typeof res === 'string' ? JSON.parse(res) : res;
+          if (r && r.ok) {
+            message.success('Producto eliminado');
+            setDeleteOpen(false);
+            setToDelete(null);
+            cargar();
+          } else {
+            Modal.error({ title: 'No se pudo eliminar', content: (r && r.message) || 'Error desconocido' });
+          }
+        } catch (e) {
+          Modal.error({ title: 'Error', content: 'Respuesta inválida del servidor.' });
+        }
+      })
+      .withFailureHandler(function (err) {
+        setLoading(false);
+        Modal.error({ title: 'Error de servidor', content: String((err && err.message) || err) });
+      })
+      .eliminarProducto(toDelete.id);
+  }
+
+  // ===== Columnas =====
+  const columns = [
+    { title: 'ID', dataIndex: 'id', key: 'id', width: 70,
+      sorter: function(a,b){ return String(a.id).localeCompare(String(b.id)); } },
+    { title: 'Nombre', dataIndex: 'nombreProducto', key: 'nombreProducto' },
+    { title: 'Precio', dataIndex: 'precio', key: 'precio',
+      render: function (v) { return formatHNL(v); },
+      sorter: function (a, b) { return Number(a.precio || 0) - Number(b.precio || 0); },
+      align: 'right', width: 120
+    },
+    { title: 'Stock', dataIndex: 'stock', key: 'stock', align: 'right', width: 90 },
+    { title: 'Fecha de Entrada', dataIndex: 'fechaEntrada', key: 'fechaEntrada',
+      render: function (v) {
+        var d = parseFechaFlexible(v);
+        return d ? formatYMD(d) : (v == null ? '' : String(v));
+      },
+      sorter: function(a,b){
+        var da = parseFechaFlexible(a.fechaEntrada);
+        var db = parseFechaFlexible(b.fechaEntrada);
+        var ta = da ? da.getTime() : 0;
+        var tb = db ? db.getTime() : 0;
+        return ta - tb;
+      },
+      width: 120
+    },
+    { title: 'Descripción', dataIndex: 'descripcion', key: 'descripcion' },
+    { title: 'Sucursal', dataIndex: 'nombreSucursal', key: 'nombreSucursal', width: 200 },
+    { title: 'Acciones', key: 'acciones', fixed: 'right', width: 160,
+      render: function(_, record){
+        return (
+          <Space>
+            <Button size="small" onClick={function(){ abrirEditar(record); }}>Editar</Button>
+            <Button size="small" danger onClick={function(){ abrirEliminar(record); }}>Eliminar</Button>
+          </Space>
+        );
+      }
+    }
+  ];
+
+  // Opciones para Select (no editable)
+  var sucOptions = sucursales.map(function (s) {
+    return { value: s.nombreSucursal, label: s.nombreSucursal };
+  });
+
+  return (
+    <Card
+      title="Productos"
+      extra={
+        <Space>
+          <Button onClick={cargar} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
+          <Button type="primary" onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Nuevo</Button>
+        </Space>
+      }
+    >
+      <Table
+        dataSource={data}
+        columns={columns}
+        loading={loading}
+        pagination={{ pageSize: 10 }}
+        rowKey={function(r){ return (r && r.id != null) ? r.id : r.key; }}
+        scroll={{ x: true }}
+      />
+
+      {/* Modal Crear/Editar */}
+      <Modal
+        title={modalMode === 'create' ? 'Nuevo Producto' : 'Editar Producto'}
+        open={modalOpen} visible={modalOpen}
+        onCancel={function(){ setModalOpen(false); }}
+        onOk={function(){ form.submit(); }}
+        okText={modalMode === 'create' ? 'Crear' : 'Guardar'}
+        confirmLoading={loading}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" onFinish={onSubmit}>
+          <Form.Item name="id" style={{ display: 'none' }}>
+            <Input />
+          </Form.Item>
+
+          <Form.Item label="Nombre" name="nombreProducto"
+            rules={[{ required: true, message: 'Ingrese el nombre del producto' }]}>
+            <Input placeholder="Ej. Shampoo" />
+          </Form.Item>
+
+          <Form.Item label="Precio (L.)" name="precio"
+            rules={[{ required: true, message: 'Ingrese el precio' }]}>
+            <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="Ej. 100.00" />
+          </Form.Item>
+
+          <Form.Item label="Stock" name="stock"
+            rules={[{ required: true, message: 'Ingrese el stock' }]}>
+            <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="Ej. 10" />
+          </Form.Item>
+
+          <Form.Item label="Fecha de Entrada" name="fechaEntrada">
+            <Input type="date" />
+          </Form.Item>
+
+          <Form.Item label="Descripción" name="descripcion">
+            <Input.TextArea rows={3} placeholder="Detalles del producto" />
+          </Form.Item>
+
+          {/* Select de sucursales - NO editable */}
+          <Form.Item label="Sucursal" name="nombreSucursal"
+            rules={[{ required: true, message: 'Seleccione una sucursal' }]}>
+            <Select
+              options={sucOptions}
+              showSearch={false}        // <-- no permite escribir
+              placeholder="Seleccione sucursal"
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal Eliminar */}
+      <Modal
+        title="Eliminar Producto"
+        open={deleteOpen} visible={deleteOpen}
+        onCancel={function(){ setDeleteOpen(false); setToDelete(null); }}
+        onOk={confirmarEliminar}
+        okText="Eliminar"
+        okButtonProps={{ danger: true }}
+        confirmLoading={loading}
+        destroyOnClose
+      >
+        <p>¿Seguro que deseas eliminar el producto <b>{toDelete ? (toDelete.nombreProducto || ('ID ' + toDelete.id)) : ''}</b>?</p>
+        <p>Esta acción no se puede deshacer.</p>
+      </Modal>
+    </Card>
+  );
+}
+//</script>

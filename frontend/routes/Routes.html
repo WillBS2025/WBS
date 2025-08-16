@@ -58,6 +58,10 @@ function Routes() {
                                     <Route exact path="/Inventario" component={Inventario} />
                                     <Route exact path="/Ventas" component={Ventas} />
                                     <Route exact path="/Reportes" component={Reportes} />
+
+                                    {/* Rutas hijas de Inventario */}
+                                    <Route exact path="/inventario/productos" component={Productos} />
+                                    <Route exact path="/inventario/suministros" component={Suministros} />
                                     <Redirect to="/" />
                                 </Switch>
                             </div>
