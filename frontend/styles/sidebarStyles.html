@@ -122,4 +122,57 @@ html,body,.ant-layout{overflow-x:hidden !important;}
 .wb-sidebar .ant-menu-item,.wb-sidebar .ant-menu-submenu-title{
   white-space:normal;word-break:break-word;max-width:100%;
 }
+/* ============================
+   CSS: FRANJA DORADA – LOOP SUAVE SIN SALTO
+   (MANTIENE EL LOOK ANTERIOR)
+   ============================ */
+
+/* CSS: PARAMETROS AJUSTABLES */
+:root{
+  --wb-shine-unit: 500px;    /* ALTURA DEL PATRON (AJUSTA 80–160px) */
+  --wb-shine-speed: 4s;      /* VELOCIDAD DEL BARRIDO */
+}
+
+/* CSS: REEMPLAZA TU .wb-sidebar.ant-layout-sider::after ANTERIOR POR ESTE */
+.wb-sidebar.ant-layout-sider::after{
+  content:"";
+  position:absolute; top:0; right:0; height:100%;
+  width:4px;                         /* ANCHO DE LA FRANJA */
+  pointer-events:none;
+  filter: drop-shadow(0 0 6px rgba(191,164,111,0.45));
+  opacity:.95;
+
+  /* CSS: MISMO GRADIENTE DORADO, PERO 'TILEABLE' Y EN REPETICION VERTICAL */
+  background-image: linear-gradient(
+    180deg,
+    rgba(191,164,111,0.00) 0%,
+    rgba(191,164,111,0.35) 40%,
+    rgba(191,164,111,0.85) 50%,
+    rgba(191,164,111,0.35) 60%,
+    rgba(191,164,111,0.00) 100%
+  );
+  background-size: 95% var(--wb-shine-unit);  /* TAMAÑO DE UNA “BALDOSA” */
+  background-repeat: repeat-y;                 /* SE REPITE EN Y (NO HAY CORTE) */
+
+  /* CSS: ANIMACION CONTINUA MOVIENDO UNA UNIDAD EXACTA */
+  animation: wbShineLoop var(--wb-shine-speed) linear infinite;
+  will-change: background-position;
+}
+
+/* CSS: VARIANTE EN MODO CLARO (OPCIONAL) */
+html.theme-light .wb-sidebar.ant-layout-sider::after{
+  filter: drop-shadow(0 0 4px rgba(191,164,111,0.25));
+  opacity:.85;
+}
+
+/* CSS: OCULTA LA FRANJA SI EL SIDEBAR ESTA COLAPSADO */
+.wb-sidebar.is-collapsed::after{ display:none; }
+
+/* CSS: KEYFRAMES NUEVOS (ELIMINA/NO USES wbShine ANTERIOR) */
+@keyframes wbShineLoop{
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 var(--wb-shine-unit); } /* MUEVE EXACTAMENTE 1 UNIDAD */
+}
+
+
 </style>

@@ -1,0 +1,236 @@
+<style>
+/* ============================================
+   MODALES WILITO – GLASS + DROPDOWNS OSCUROS
+   (SOLO CSS, SIN TOCAR JSX)
+   ============================================ */
+
+/* ===== TOKENS ===== */
+:root{
+  --wb-gold-500: #bfa46f;
+  --wb-gold-600: #a3874a;
+  --app-text:    #eee;
+  --app-muted:   #bdb7a6;
+
+  /* GLASS TUNING MODAL */
+  --wb-glass-alpha: .56;       /* 0.45–0.65 */
+  --wb-glass-blur:  10px;      /* 6–14px */
+  --wb-glass-edge:  rgba(255,255,255,.06);
+  --wb-surface-1:   17,17,17;  /* RGB SIN ALFA */
+  --wb-surface-2:   27,27,27;
+
+  /* GLASS TUNING DROPDOWNS (SELECT/CALENDAR/LISTAS) */
+  --wb-drop-alpha: .64;
+  --wb-drop-blur:  10px;
+}
+
+/* ===== MÁSCARA ===== */
+.ant-modal-root .ant-modal-mask{
+  background: rgba(0,0,0,.35) !important;
+  backdrop-filter: blur(2.5px);
+}
+
+/* ===== MODAL CONTENT (GLASS) ===== */
+.ant-modal-root .ant-modal .ant-modal-content,
+.ant-modal-root [class*="css-dev-only-do-not-override"] .ant-modal-content{
+  background:
+    linear-gradient(
+      135deg,
+      rgba(var(--wb-surface-1), calc(var(--wb-glass-alpha) * .96)) 0%,
+      rgba(var(--wb-surface-2), var(--wb-glass-alpha)) 100%
+    ) !important;
+  -webkit-backdrop-filter: blur(var(--wb-glass-blur)) saturate(115%);
+  backdrop-filter: blur(var(--wb-glass-blur)) saturate(115%);
+  color: var(--app-text) !important;
+  border: 1px solid var(--wb-glass-edge) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 18px 40px rgba(0,0,0,.40), 0 0 0 1px rgba(255,255,255,.02) inset !important;
+  overflow: hidden;
+  animation: wbModalIn .22s ease-out;
+}
+
+/* ===== HEADER ===== */
+.ant-modal-root .ant-modal .ant-modal-header{
+  background: linear-gradient(180deg, rgba(255,255,255,.04), transparent) !important;
+  color: var(--app-text) !important;
+  border-bottom: 1px solid rgba(255,255,255,.06) !important;
+  padding: 14px 16px !important;
+  position: relative;
+}
+.ant-modal-root .ant-modal .ant-modal-header::after{
+  content:""; position:absolute; left:12px; right:12px; bottom:0; height:2px;
+  background: linear-gradient(90deg, transparent, var(--wb-gold-500), transparent);
+  opacity:.42;
+}
+
+/* ===== TÍTULO (DORADO SUTIL) ===== */
+.ant-modal-root .ant-modal .ant-modal-title{
+  background-image: linear-gradient(135deg, rgba(223,205,150,.85), rgba(191,164,111,.78));
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent !important;
+  text-shadow: 0 1px 0 rgba(0,0,0,.22);
+  font-weight: 800; letter-spacing: .01em;
+}
+
+/* ===== BOTÓN CERRAR ===== */
+.ant-modal-root .ant-modal .ant-modal-close{ top:10px; right:10px; }
+.ant-modal-root .ant-modal .ant-modal-close svg{ color: var(--app-muted); transition: color .15s ease; }
+.ant-modal-root .ant-modal .ant-modal-close:hover svg{ color: var(--wb-gold-500); }
+
+/* ===== BODY / FOOTER ===== */
+.ant-modal-root .ant-modal .ant-modal-body{ padding: 16px !important; }
+.ant-modal-root .ant-modal .ant-modal-footer{
+  background: linear-gradient(180deg, transparent, rgba(255,255,255,.03));
+  border-top: 1px solid rgba(255,255,255,.06) !important;
+  padding: 10px 12px !important;
+}
+
+/* ===== BOTONES ===== */
+.ant-modal-root .ant-modal .ant-btn{
+  border-color: rgba(255,255,255,.10) !important;
+  background: rgba(255,255,255,.02) !important;
+  color: var(--app-text) !important;
+}
+.ant-modal-root .ant-modal .ant-btn:hover{
+  border-color: var(--wb-gold-500) !important;
+  color: var(--wb-gold-500) !important;
+}
+.ant-modal-root .ant-modal .ant-btn-primary{
+  background: linear-gradient(135deg, var(--wb-gold-500), var(--wb-gold-600)) !important;
+  border: none !important; color: #111 !important; font-weight: 700;
+}
+.ant-modal-root .ant-modal .ant-btn-primary:hover{ filter: brightness(1.05); }
+
+/* ===== LABELS (TINTE DORADO SUAVE) ===== */
+.ant-modal-root .ant-modal .ant-form-item-label > label{
+  color: color-mix(in srgb, var(--app-muted) 75%, var(--wb-gold-500) 25%) !important;
+  font-weight: 600;
+}
+
+/* ===== CAMPOS (INPUT/SELECT/NUMBER/DATE) ===== */
+.ant-modal-root .ant-modal input,
+.ant-modal-root .ant-modal textarea,
+.ant-modal-root .ant-modal .ant-input,
+.ant-modal-root .ant-modal .ant-input-affix-wrapper,
+.ant-modal-root .ant-modal .ant-select-selector,
+.ant-modal-root .ant-modal .ant-input-number,
+.ant-modal-root .ant-modal .ant-picker{
+  background: rgba(255,255,255,.04) !important;
+  color: var(--app-text) !important;
+  border-color: rgba(255,255,255,.10) !important;
+}
+.ant-modal-root .ant-modal .ant-input:hover,
+.ant-modal-root .ant-modal .ant-input:focus,
+.ant-modal-root .ant-modal .ant-input-affix-wrapper:hover,
+.ant-modal-root .ant-modal .ant-select-selector:hover,
+.ant-modal-root .ant-modal .ant-input-number:hover,
+.ant-modal-root .ant-modal .ant-picker:hover{
+  border-color: var(--wb-gold-500) !important;
+  box-shadow: 0 0 0 2px rgba(191,164,111,.20) !important;
+}
+
+/* ===== DROPDOWNS/POPOVERS EN PORTAL (SIN FONDO BLANCO) ===== */
+/* SELECT (LISTA DE OPCIONES) */
+.ant-select-dropdown{
+  background:
+    linear-gradient(135deg, rgba(20,20,20,var(--wb-drop-alpha)), rgba(32,32,32,var(--wb-drop-alpha))) !important;
+  -webkit-backdrop-filter: blur(var(--wb-drop-blur)) saturate(115%);
+  backdrop-filter: blur(var(--wb-drop-blur)) saturate(115%);
+  color: var(--app-text) !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 14px 32px rgba(0,0,0,.38) !important;
+}
+.ant-select-item{ color: var(--app-text) !important; }
+.ant-select-item-option-active{
+  background: rgba(191,164,111,.12) !important;
+}
+.ant-select-item-option-selected{
+  background: rgba(191,164,111,.16) !important;
+  color: var(--wb-gold-500) !important;
+  font-weight: 700;
+}
+.ant-select-item-option-content{ white-space: normal; }
+
+/* DATEPICKER / CALENDARIO */
+.ant-picker-dropdown,
+.ant-picker-dropdown .ant-picker-panel-container{
+  background:
+    linear-gradient(135deg, rgba(20,20,20,var(--wb-drop-alpha)), rgba(32,32,32,var(--wb-drop-alpha))) !important;
+  -webkit-backdrop-filter: blur(var(--wb-drop-blur)) saturate(115%);
+  backdrop-filter: blur(var(--wb-drop-blur)) saturate(115%);
+  color: var(--app-text) !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 14px 32px rgba(0,0,0,.38) !important;
+}
+.ant-picker-panel{ background: transparent !important; color: var(--app-text) !important; }
+.ant-picker-header{ background: transparent !important; border-bottom: 1px solid rgba(255,255,255,.08) !important; }
+.ant-picker-header button{ color: var(--app-text) !important; }
+.ant-picker-cell-inner{ color: var(--app-text) !important; }
+.ant-picker-cell-in-view.ant-picker-cell-today .ant-picker-cell-inner{
+  box-shadow: inset 0 0 0 1px var(--wb-gold-500);
+  border-radius: 6px;
+}
+.ant-picker-cell-in-view.ant-picker-cell-selected .ant-picker-cell-inner{
+  background: linear-gradient(135deg, var(--wb-gold-500), var(--wb-gold-600)) !important;
+  color: #111 !important; border-radius: 6px;
+}
+.ant-picker-time-panel, .ant-picker-time-panel-column{
+  background: transparent !important; border-color: rgba(255,255,255,.08) !important;
+}
+.ant-picker-time-panel-cell-selected .ant-picker-time-panel-cell-inner{
+  background: rgba(191,164,111,.18) !important; color: var(--wb-gold-500) !important;
+}
+
+/* DROPDOWN GENÉRICO (MENÚS) */
+.ant-dropdown-menu{
+  background:
+    linear-gradient(135deg, rgba(20,20,20,var(--wb-drop-alpha)), rgba(32,32,32,var(--wb-drop-alpha))) !important;
+  -webkit-backdrop-filter: blur(var(--wb-drop-blur)) saturate(115%);
+  backdrop-filter: blur(var(--wb-drop-blur)) saturate(115%);
+  color: var(--app-text) !important;
+  border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 12px !important;
+}
+.ant-dropdown-menu-item, .ant-dropdown-menu-submenu-title{ color: var(--app-text) !important; }
+.ant-dropdown-menu-item:hover, .ant-dropdown-menu-submenu-title:hover{
+  background: rgba(191,164,111,.12) !important; color: var(--wb-gold-500) !important;
+}
+
+/* ===== LIGHT MODE (GLASS CLARO) ===== */
+html.theme-light .ant-modal-root .ant-modal .ant-modal-content{
+  background: linear-gradient(135deg, rgba(255,255,255,.78), rgba(255,255,255,.84)) !important;
+  -webkit-backdrop-filter: blur(9px) saturate(115%);
+  backdrop-filter: blur(9px) saturate(115%);
+  border: 1px solid rgba(0,0,0,.06) !important;
+  box-shadow: 0 18px 40px rgba(0,0,0,.10), 0 0 0 1px rgba(0,0,0,.02) inset !important;
+}
+html.theme-light .ant-modal-root .ant-modal .ant-modal-header{
+  background: linear-gradient(180deg, rgba(0,0,0,.02), transparent) !important;
+  border-bottom-color: rgba(0,0,0,.06) !important;
+}
+html.theme-light .ant-modal-root .ant-modal .ant-modal-footer{
+  background: linear-gradient(180deg, transparent, rgba(0,0,0,.02)) !important;
+  border-top-color: rgba(0,0,0,.06) !important;
+}
+/* DROPDOWNS CLAROS */
+html.theme-light .ant-select-dropdown,
+html.theme-light .ant-picker-dropdown,
+html.theme-light .ant-dropdown-menu{
+  background: linear-gradient(135deg, rgba(255,255,255,.85), rgba(255,255,255,.92)) !important;
+  border: 1px solid rgba(0,0,0,.06) !important;
+  color: #222 !important;
+}
+
+/* ===== ANIMACIÓN ENTRADA ===== */
+@keyframes wbModalIn{
+  from{ transform: translateY(6px) scale(.98); opacity: 0; }
+  to  { transform: translateY(0)   scale(1);   opacity: 1; }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 480px){
+  .ant-modal-root .ant-modal .ant-modal-content{ border-radius: 12px !important; }
+  .ant-modal-root .ant-modal .ant-modal-body{ padding: 12px !important; }
+}
+</style>

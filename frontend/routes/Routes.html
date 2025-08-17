@@ -40,17 +40,17 @@ function Routes() {
 
                     <Layout className="site-layout">
                         {/* Puedes añadir un Header superior aquí si lo deseas para mostrar el título, etc. */}
-                        <Layout.Header className="site-layout-background" style={{ padding: 0, background: '#fff' }}>
-                            <div className="flex justify-between items-center h-full px-4">
+                        <Layout.Header className="site-layout-background" style={{ background: '#fff', padding: '0 20px' }}>
+                            <div className="flex justify-between items-center h-full">
                                 <h2 className="text-2xl font-bold">Mi Aplicación</h2>
                                 {/* Si quisieras un header con info del usuario, aquí iría */}
                             </div>
                         </Layout.Header>
-                        <Layout.Content style={{ margin: '0 16px' }}>
-                            <Breadcrumb style={{ margin: '16px 0' }}>
+                        <Layout.Content style={{ margin: '0 -20px' }}>
+                            <Breadcrumb style={{ margin: '-5px 0' }}>
                                 {/* Puedes agregar Breadcrumbs dinámicamente según la ruta */}
                             </Breadcrumb>
-                            <div className="site-layout-background" style={{ padding: 24, minHeight: 360 }}>
+                            <div className="site-layout-background" style={{ padding: '10px 10px', minHeight: 360 }}>
                                 <Switch>
                                     <Route exact path="/" component={Inicio} />
                                     <Route exact path="/formularioRegistro" component={FormularioRegistro} />
@@ -66,7 +66,7 @@ function Routes() {
                                 </Switch>
                             </div>
                         </Layout.Content>
-                        <Layout.Footer style={{ textAlign: 'center' }}>
+                        <Layout.Footer style={{ textAlign: 'center', padding: '12px 8px' }}>
                             SomniumIA ©{new Date().getFullYear()}
                         </Layout.Footer>
                     </Layout>
