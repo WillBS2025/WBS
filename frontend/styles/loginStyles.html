@@ -1,0 +1,78 @@
+<style>
+/* ========= Fondo animado sobrio + partículas ========= */
+html, body {
+  background: #0d0d0d;
+  height: 100%;
+}
+
+.bg-animated {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+  background: linear-gradient(-45deg, #0d0d0d, #1a1a1a, #111111, #151515);
+  background-size: 400% 400%;
+  animation: gradientFlow 18s ease-in-out infinite;
+}
+.bg-animated::before,
+.bg-animated::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background-image: radial-gradient(#bfa46f55 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: moveParticles 60s linear infinite;
+  opacity: 0.35;
+  z-index: 0;
+  pointer-events: none;
+}
+.bg-animated::after { animation-direction: reverse; opacity: 0.18; }
+
+@keyframes gradientFlow { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+@keyframes moveParticles { from{transform:translate(0,0) rotate(0)} to{transform:translate(60px,60px) rotate(360deg)} }
+
+/* ========= Inputs Ant Design – elegantes, sin doble borde ========= */
+/* Aplica className="dark-input" al <Input/> y <Input.Password/> (ya lo tienes): AntD la pone en el wrapper .ant-input-affix-wrapper */
+.dark-input.ant-input-affix-wrapper {
+  background-color: #111 !important;
+  border: 1px solid #bfa46f !important;
+  border-radius: 6px !important;
+  height: 40px !important;
+  padding: 0 10px !important;
+  transition: all 0.25s ease-in-out;
+  box-shadow: none !important;
+}
+
+/* El input interno queda limpio (sin fondo ni borde extra) */
+.dark-input input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #eee !important;
+  height: 100% !important;
+}
+
+/* Iconos y botón de mostrar contraseña */
+.dark-input .ant-input-prefix,
+.dark-input .ant-input-suffix,
+.dark-input .ant-input-password-icon {
+  color: #bfa46f !important;
+  opacity: 0.9;
+}
+
+/* Placeholder dorado opaco */
+.dark-input input::placeholder { color: #bdb7a6 !important; opacity: 0.8; }
+
+/* Hover y focus sobrios */
+.dark-input.ant-input-affix-wrapper:hover { border-color: #d1b971 !important; }
+.dark-input.ant-input-affix-wrapper-focused {
+  border-color: #e1c97c !important;
+  box-shadow: 0 0 6px rgba(191,164,111,0.35) !important;
+}
+
+/* Espaciado vertical entre campos */
+.ant-form-item { margin-bottom: 18px !important; }
+</style>

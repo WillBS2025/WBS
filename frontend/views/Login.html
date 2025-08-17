@@ -1,74 +1,160 @@
 //<script type="text/jsx">
 
 function Login({ onLogin }) {
-    const [form] = Form.useForm();
-    const [loading, setLoading] = useState(false);
+  const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
 
-    const onFinish = (values) => {
-        setLoading(true);
-        google.script.run
-            .withSuccessHandler((resp) => {
-                setLoading(false);
-                if (resp.success) {
-                    message.success(resp.message);
-                    onLogin(true); // Informa al componente padre que el login fue exitoso
-                } else {
-                    Modal.error({
-                        title: 'Error de autenticación',
-                        content: resp.message,
-                    });
-                    onLogin(false);
-                }
-            })
-            .withFailureHandler((error) => {
-                setLoading(false);
-                Modal.error({
-                    title: 'Error de comunicación',
-                    content: 'Ha ocurrido un error al intentar iniciar sesión. Por favor, inténtalo de nuevo más tarde.',
-                });
-                console.error("Error al llamar a Apps Script:", error);
-            })
-            .verificarCredenciales(values.correo, values.contrasenia);
-    };
+  const onFinish = (values) => {
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler((resp) => {
+        setLoading(false);
+        if (resp.success) {
+          message.success(resp.message);
+          onLogin(true);
+        } else {
+          Modal.error({
+            title: 'Error de autenticación',
+            content: resp.message,
+          });
+          onLogin(false);
+        }
+      })
+      .withFailureHandler((error) => {
+        setLoading(false);
+        Modal.error({
+          title: 'Error de comunicación',
+          content: 'Ha ocurrido un error al intentar iniciar sesión. Por favor, inténtalo de nuevo más tarde.',
+        });
+        console.error("Error al llamar a Apps Script:", error);
+      })
+      .verificarCredenciales(values.correo, values.contrasenia);
+  };
 
-    return (
-        <div className="flex justify-center items-center min-h-screen bg-gray-100">
-            <Card title="Iniciar Sesión" className="w-96 shadow-lg rounded-lg">
-                <Form
-                    form={form}
-                    name="login"
-                    initialValues={{ remember: true }}
-                    onFinish={onFinish}
-                    layout="vertical"
-                >
-                    <Item
-                        label="Correo"
-                        name="correo"
-                        rules={[
-                            { required: true, message: '¡Por favor ingresa tu correo!' },
-                            { type: 'email', message: '¡El formato del correo no es válido!' },
-                        ]}
-                    >
-                        <Input prefix={<icons.UserOutlined className="site-form-item-icon" />} placeholder="Correo" />
-                    </Item>
+  // Estilo de texto con “oro viejo” en degradado, sin CSS externo
+  const goldText = {
+    backgroundImage: "linear-gradient(135deg,#bfa46f 0%, #a3874a 35%, #bfa46f 70%, #8f7a45 100%)",
+    WebkitBackgroundClip: "text",
+    backgroundClip: "text",
+    color: "transparent",
+  };
 
-                    <Item
-                        label="Contraseña"
-                        name="contrasenia"
-                        rules={[{ required: true, message: '¡Por favor ingresa tu contraseña!' }]}
-                    >
-                        <Input.Password prefix={<icons.LockOutlined className="site-form-item-icon" />} placeholder="Contraseña" />
-                    </Item>
+  return (
+    <div className="relative min-h-screen flex items-center justify-center font-sans overflow-hidden">
+      {/* Fondo animado: tu CSS externo aplica en .bg-animated */}
+      <div className="absolute inset-0 bg-animated"></div>
 
-                    <Item>
-                        <Button type="primary" htmlType="submit" loading={loading} block>
-                            Iniciar Sesión
-                        </Button>
-                    </Item>
-                </Form>
-            </Card>
-        </div>
-    );
+      {/* Contenedor principal */}
+      <div className="relative z-10 w-full max-w-md px-6">
+        <Card
+          className="shadow-xl rounded-2xl"
+          style={{
+            background: "linear-gradient(145deg, #111 0%, #1b1b1b 100%)",
+            border: "1px solid #bfa46f",
+            boxShadow: "0 0 20px rgba(191,164,111,0.25)",
+          }}
+          headStyle={{ borderBottom: "none", padding: 0 }}
+          bodyStyle={{ padding: 28 }}
+          title={
+            <div className="flex flex-col items-center space-y-3 select-none">
+              <div className="w-20 h-20 flex items-center justify-center rounded-full border-2 border-[#bfa46f] shadow-md bg-[#111]">
+                    <span className="text-3xl font-extrabold tracking-wide text-[#bfa46f]">WB</span>
+              </div>
+              {/* Nombre con degradado dorado opaco */}
+              <h1
+                className="text-2xl font-extrabold tracking-wide"
+                style={goldText}
+              >
+                Wilito BarberShop
+              </h1>
+
+              {/* Divisor fino dorado */}
+              <div
+                style={{
+                  width: 120,
+                  height: 1,
+                  backgroundImage:
+                    "linear-gradient(90deg, transparent, #bfa46f 20%, #a3874a 50%, #bfa46f 80%, transparent)",
+                  opacity: 0.9,
+                }}
+              />
+              <p className="text-sm" style={{ color: "#bdb7a6" }}>
+                Elegancia • Estilo • Tradición
+              </p>
+            </div>
+          }
+        >
+          <Form
+            form={form}
+            name="login"
+            initialValues={{ remember: true }}
+            onFinish={onFinish}
+            layout="vertical"
+          >
+            <Item
+              label={<span style={{ color: "#bfa46f", fontWeight: "600" }}>Correo</span>}
+              name="correo"
+              rules={[
+                { required: true, message: '¡Por favor ingresa tu correo!' },
+                { type: 'email', message: '¡El formato del correo no es válido!' },
+              ]}
+            >
+              <Input
+                size="large"
+                className="rounded-md dark-input"
+                prefix={<icons.UserOutlined style={{ color: "#bfa46f" }} />}
+                placeholder="correo@ejemplo.com"
+              />
+            </Item>
+
+            <Item
+              label={<span style={{ color: "#bfa46f", fontWeight: "600" }}>Contraseña</span>}
+              name="contrasenia"
+              rules={[{ required: true, message: '¡Por favor ingresa tu contraseña!' }]}
+            >
+              <Input.Password
+                size="large"
+                className="rounded-md dark-input"
+                prefix={<icons.LockOutlined style={{ color: "#bfa46f" }} />}
+                placeholder="••••••••"
+              />
+            </Item>
+
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm text-gray-400 hover:underline cursor-pointer">
+                ¿Olvidaste tu contraseña?
+              </span>
+            </div>
+
+            <Item>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                block
+                size="large"
+                className="rounded-md shadow-md hover:shadow-lg transition-all duration-300"
+                style={{
+                  background: "linear-gradient(135deg,#bfa46f,#a3874a,#bfa46f)",
+                  border: "none",
+                  color: "#111",
+                  fontWeight: "bold",
+                  letterSpacing: "0.5px",
+                  textTransform: "uppercase",
+                }}
+              >
+                Ingresar
+              </Button>
+            </Item>
+
+            <div className="text-center text-xs text-gray-500 mt-4">
+              © {new Date().getFullYear()} Wilito BarberShop • Todos los derechos reservados
+            </div>
+          </Form>
+        </Card>
+      </div>
+    </div>
+  );
 }
 
 //</script>
