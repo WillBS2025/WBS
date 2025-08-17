@@ -1,128 +1,125 @@
 <style>
-/* CSS: TODO LO DEBAJO ESTÁ SCOPEADO AL SIDEBAR Y NO AFECTA OTRAS VISTAS */
-.wb-sidebar {
-  /* CSS: TOKENS LOCALES (MISMOS DEL LOGIN) */
-  --wb-bg-1: #111;
-  --wb-bg-2: #1b1b1b;
-  --wb-gold-500: #bfa46f;
-  --wb-gold-600: #a3874a;
-  --wb-gold-300: #e1c97c;
-  --wb-ink-50: #eee;
-  --wb-ink-300: #bdb7a6;
-  --wb-border: #2a2a2a;
-  --wb-glow: rgba(191,164,111,0.25);
+/* =========================
+   SIDEBAR WILITO (LIMPIO)
+   ========================= */
 
-  width: 240px;
-  min-height: 100vh;
-  background: linear-gradient(145deg, var(--wb-bg-1) 0%, var(--wb-bg-2) 100%);
-  border-right: 1px solid var(--wb-border);
-  box-shadow: 0 0 20px var(--wb-glow);
+/* CSS: TOKENS LOCALES (MISMOS DEL LOGIN) */
+.wb-sidebar{
+  --wb-bg-1:#111;
+  --wb-bg-2:#1b1b1b;
+  --wb-gold-500:#bfa46f;
+  --wb-gold-600:#a3874a;
+  --wb-gold-300:#e1c97c;
+  --wb-ink-50:#eee;
+  --wb-ink-300:#bdb7a6;
+  --wb-border:#2a2a2a;
+  --wb-glow:rgba(191,164,111,0.25);
+
+  width:240px;
+  min-height:100vh;
+  background:linear-gradient(145deg,var(--wb-bg-1) 0%,var(--wb-bg-2) 100%);
+  border-right:1px solid var(--wb-border);
+  box-shadow:0 0 20px var(--wb-glow);
 }
 
 /* CSS: VARIANTE COLAPSADA */
-.wb-sidebar.is-collapsed { width: 72px; }
+.wb-sidebar.is-collapsed{width:72px;}
 
 /* CSS: BRAND */
-.wb-sidebar .wb-brand {
-  display: grid; place-items: center; padding: 20px 16px 8px;
+.wb-sidebar .wb-brand{display:grid;place-items:center;padding:20px 16px 8px;}
+.wb-sidebar .wb-brand .wb-logo{
+  width:80px;height:80px;border-radius:9999px;display:grid;place-items:center;
+  background:#111;border:2px solid var(--wb-gold-500);box-shadow:0 0 12px rgba(191,164,111,.18);
 }
-.wb-sidebar .wb-brand .wb-logo {
-  width: 80px; height: 80px; border-radius: 9999px;
-  display: grid; place-items: center;
-  background: #111; border: 2px solid var(--wb-gold-500);
-  box-shadow: 0 0 12px rgba(191,164,111,0.18);
-}
-.wb-sidebar .wb-brand .wb-title {
-  /* CSS: DEGRADADO DORADO EN TEXTO (IGUAL AL LOGIN) */
-  background-image: linear-gradient(135deg, #bfa46f 0%, #a3874a 35%, #bfa46f 70%, #8f7a45 100%);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
-  font-weight: 800; letter-spacing: .02em; margin-top: 10px; text-align: center;
+.wb-sidebar .wb-brand .wb-title{
+  background-image:linear-gradient(135deg,#bfa46f 0%,#a3874a 35%,#bfa46f 70%,#8f7a45 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  font-weight:800;letter-spacing:.02em;margin-top:10px;text-align:center;
 }
 
-/* CSS: MENU BASE (FUNCIONA CON O SIN ANT DESIGN) */
-.wb-sidebar .wb-nav { padding: 8px; }
-.wb-sidebar .wb-nav-item {
-  display: flex; align-items: center; gap: 10px;
-  height: 44px; padding: 0 12px;
-  color: var(--wb-ink-300); border-radius: 8px;
-  border-left: 3px solid transparent; transition: all .18s ease-in-out;
+/* CSS: NAV BASE (si usas items custom fuera de AntD) */
+.wb-sidebar .wb-nav{padding:8px;}
+.wb-sidebar .wb-nav-item{
+  display:flex;align-items:center;gap:10px;height:44px;padding:0 12px;color:var(--wb-ink-300);
+  border-radius:8px;border-left:3px solid transparent;transition:all .18s ease-in-out;
 }
-.wb-sidebar .wb-nav-item:hover {
-  background: rgba(191,164,111,0.06);
-  color: var(--wb-gold-500);
-  border-left-color: color-mix(in srgb, var(--wb-gold-500) 70%, transparent);
-  box-shadow: 0 0 10px rgba(191,164,111,0.1);
+.wb-sidebar .wb-nav-item:hover{
+  background:rgba(191,164,111,.06);color:var(--wb-gold-500);
+  border-left-color:color-mix(in srgb,var(--wb-gold-500) 70%,transparent);
+  box-shadow:0 0 10px rgba(191,164,111,.1);
 }
-.wb-sidebar .wb-nav-item.is-active {
-  background: rgba(191,164,111,0.10);
-  color: var(--wb-gold-500);
-  border-left-color: var(--wb-gold-500);
-  box-shadow: 0 0 14px rgba(191,164,111,0.18);
+.wb-sidebar .wb-nav-item.is-active{
+  background:rgba(191,164,111,.10);color:var(--wb-gold-500);
+  border-left-color:var(--wb-gold-500);box-shadow:0 0 14px rgba(191,164,111,.18);
 }
-.wb-sidebar .wb-icon { font-size: 18px; line-height: 1; }
+.wb-sidebar .wb-icon{font-size:18px;line-height:1;}
 
 /* CSS: FOCUS ACCESIBLE */
-.wb-sidebar .wb-nav-item:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(191,164,111,0.25);
+.wb-sidebar .wb-nav-item:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(191,164,111,.25);}
+
+/* CSS: DIVISOR DORADO */
+.wb-sidebar .wb-divider{
+  height:1px;margin:8px 10px;
+  background-image:linear-gradient(90deg,transparent,var(--wb-gold-500) 15%,var(--wb-gold-600) 50%,var(--wb-gold-500) 85%,transparent);
+  opacity:.75;
 }
 
-/* CSS: DIVISORES CON “DESTELLO” DORADO */
-.wb-sidebar .wb-divider {
-  height: 1px; margin: 8px 10px;
-  background-image: linear-gradient(
-    90deg, transparent, var(--wb-gold-500) 15%, var(--wb-gold-600) 50%, var(--wb-gold-500) 85%, transparent
-  );
-  opacity: .75;
+/* =========================
+   Ant Design (solo en scope)
+   ========================= */
+.wb-sidebar.ant-layout-sider{
+  background:linear-gradient(145deg,var(--wb-bg-1) 0%,var(--wb-bg-2) 100%) !important;
+  border-right:1px solid var(--wb-border) !important;
+  box-shadow:0 0 20px var(--wb-glow);
+  /* SIDEBAR FIJO Y SIN SCROLL GENERAL (lo hace el menú) */
+  position:fixed;top:0;left:0;bottom:0;height:100vh;overflow:hidden;z-index:100;
 }
-
-/* CSS: OVERRIDES ANT DESIGN SOLO EN EL SCOPE DEL SIDEBAR */
-.wb-sidebar .ant-menu { background: transparent; border-inline-end: none; }
-.wb-sidebar .ant-menu-item {
-  color: var(--wb-ink-300);
-  border-radius: 8px; margin: 4px 8px; height: 44px; line-height: 44px;
-}
-.wb-sidebar .ant-menu-item:hover { color: var(--wb-gold-500); background: rgba(191,164,111,0.06); }
-.wb-sidebar .ant-menu-item-selected {
-  color: var(--wb-gold-500) !important;
-  background: rgba(191,164,111,0.10) !important;
-  box-shadow: inset 3px 0 0 var(--wb-gold-500);
-}
-
-/* CSS: FORZAR EL FONDO DEL SIDER DE ANT DESIGN DENTRO DEL SCOPE .wb-sidebar */
-.wb-sidebar.ant-layout-sider {
-  background: linear-gradient(145deg, var(--wb-bg-1) 0%, var(--wb-bg-2) 100%) !important; /* EVITA EL BLANCO POR DEFECTO */
-  border-right: 1px solid var(--wb-border) !important;
-  box-shadow: 0 0 20px var(--wb-glow);
-}
-
-/* CSS: HACER QUE EL CONTENIDO INTERNO DEL SIDER USE TODO EL ALTO Y COLUMNA */
-.wb-sidebar.ant-layout-sider .ant-layout-sider-children {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-/* CSS: EL MENÚ EN EL SIDEBAR SIN FONDO PROPIO */
-.wb-sidebar .ant-menu {
-  background: transparent !important;
-  border-inline-end: none !important;
-}
-
-/* CSS: POR SI ALGÚN TEMA “LIGHT” EMPUJA COLORES */
-.wb-sidebar .ant-menu-item,
-.wb-sidebar .ant-menu-submenu-title {
-  color: var(--wb-ink-300) !important;
-}
+.wb-sidebar .ant-menu{background:transparent !important;border-inline-end:none !important;}
+.wb-sidebar .ant-menu-item{color:var(--wb-ink-300);border-radius:8px;margin:4px 8px;height:44px;line-height:44px;}
 .wb-sidebar .ant-menu-item:hover,
-.wb-sidebar .ant-menu-submenu-title:hover {
-  color: var(--wb-gold-500) !important;
-  background: rgba(191,164,111,0.06) !important;
-}
-.wb-sidebar .ant-menu-item-selected {
-  color: var(--wb-gold-500) !important;
-  background: rgba(191,164,111,0.10) !important;
-  box-shadow: inset 3px 0 0 var(--wb-gold-500);
+.wb-sidebar .ant-menu-submenu-title:hover{color:var(--wb-gold-500) !important;background:rgba(191,164,111,.06) !important;}
+.wb-sidebar .ant-menu-item-selected{
+  color:var(--wb-gold-500) !important;background:rgba(191,164,111,.10) !important;
+  box-shadow:inset 3px 0 0 var(--wb-gold-500);
 }
 
+/* Layout derecho ocupa el resto y es quien scrollea */
+.ant-layout > .wb-sidebar.ant-layout-sider + .ant-layout{
+  margin-left:240px;height:100vh;overflow:hidden;transition:margin-left .2s ease;
+}
+.ant-layout > .wb-sidebar.is-collapsed + .ant-layout{margin-left:0;}
+.ant-layout > .wb-sidebar.ant-layout-sider + .ant-layout .ant-layout-content{
+  height:100%;overflow-y:auto;overflow-x:hidden;
+}
+
+/* =========================
+   Barra de scroll del MENÚ
+   ========================= */
+/* Estructura para que el menú sea el área scrollable */
+.wb-sidebar.ant-layout-sider .ant-layout-sider-children{display:flex;flex-direction:column;height:100%;}
+.wb-sidebar .wb-brand,.wb-sidebar .wb-divider{flex:0 0 auto;}
+.wb-sidebar .ant-menu{flex:1 1 auto;min-height:0;}
+
+/* SOLO VERTICAL; OCULTA POR DEFECTO */
+.wb-sidebar .ant-menu{
+  overflow-y:auto;overflow-x:hidden;max-width:100%;
+  scrollbar-width:none; /* Firefox: oculto */
+}
+.wb-sidebar .ant-menu::-webkit-scrollbar{width:0;height:0;} /* WebKit: oculto */
+
+/* MOSTRAR SOLO AL PASAR EL MOUSE POR EL SIDEBAR */
+.wb-sidebar:hover .ant-menu{scrollbar-width:thin;scrollbar-color:rgba(191,164,111,.45) transparent;}
+.wb-sidebar:hover .ant-menu::-webkit-scrollbar{width:6px;}
+.wb-sidebar:hover .ant-menu::-webkit-scrollbar-thumb{
+  background:linear-gradient(#bfa46f,#a3874a);border-radius:999px;
+}
+.wb-sidebar:hover .ant-menu::-webkit-scrollbar-track{background:transparent;}
+
+/* Prevenir barras horizontales globales */
+html,body,.ant-layout{overflow-x:hidden !important;}
+
+/* Evitar desborde por textos largos */
+.wb-sidebar .ant-menu-item,.wb-sidebar .ant-menu-submenu-title{
+  white-space:normal;word-break:break-word;max-width:100%;
+}
 </style>

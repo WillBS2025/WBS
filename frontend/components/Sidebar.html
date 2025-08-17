@@ -19,11 +19,12 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
     <Layout.Sider
       className={`wb-sidebar ${collapsed ? "is-collapsed" : ""}`}  // APLICA ESTILO GLOBAL DEL SIDEBAR
       collapsible
-      collapsed={collapsed}
-      onCollapse={onCollapse}
-      breakpoint="lg"              // SE COLAPSA EN PANTALLAS GRANDES
-      collapsedWidth="0"           // OCULTA COMPLETAMENTE EN COLAPSADO
-      style={{ background: "transparent" }} // USAMOS FONDO DE TU CSS, NO EL AZUL BASE
+      trigger={null}                  // JSX: DESACTIVA TRIGGER AUTOMÁTICO DE ANT DESIGN
+      collapsed={collapsed}           // JSX: CONTROL TOTAL DESDE EL PADRE
+      // onCollapse={onCollapse}      // JSX: DESACTIVADO PARA EVITAR AUTO-COLLAPSE
+      // breakpoint="lg"              // JSX: DESACTIVADO PARA QUE NO SE CIERRE POR RESPONSIVE
+      collapsedWidth="0"              // OCULTA COMPLETAMENTE EN COLAPSADO (SIGUE SIENDO CONTROLADO)
+      style={{ background: "transparent" }} // USAMOS FONDO DE TU CSS
     >
       {/* LOGO / TITULO - USANDO ESTILO DEL LOGIN */}
       <div className="wb-brand">
@@ -46,15 +47,15 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
         style={{ background: "transparent", borderInlineEnd: "none" }}
       >
         <Menu.Item key="1" icon={<icons.HomeOutlined />}>
-          <Link to="/" onClick={() => onCollapse(true)}>Inicio</Link>
+          <Link to="/">Inicio</Link>
         </Menu.Item>
 
         <Menu.Item key="2" icon={<icons.FormOutlined />}>
-          <Link to="/formularioRegistro" onClick={() => onCollapse(true)}>Registro</Link>
+          <Link to="/formularioRegistro">Registro</Link>
         </Menu.Item>
 
         <Menu.Item key="3" icon={<icons.TeamOutlined />}>
-          <Link to="/empleados" onClick={() => onCollapse(true)}>Empleados</Link>
+          <Link to="/empleados">Empleados</Link>
         </Menu.Item>
 
         {/* ================================
@@ -67,25 +68,25 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
         >
           {/* SUBOPCIÓN: PRODUCTOS */}
           <Menu.Item key="inventario-productos" icon={<icons.AppstoreOutlined />}>
-            <Link to="/inventario/Productos" onClick={() => onCollapse(true)}>
+            <Link to="/inventario/Productos">
               Productos
             </Link>
           </Menu.Item>
 
           {/* SUBOPCIÓN: SUMINISTROS */}
           <Menu.Item key="inventario-suministros" icon={<icons.ToolOutlined />}>
-            <Link to="/inventario/suministros" onClick={() => onCollapse(true)}>
+            <Link to="/inventario/suministros">
               Suministros
             </Link>
           </Menu.Item>
         </Menu.SubMenu>
 
         <Menu.Item key="5" icon={<icons.ShoppingCartOutlined />}>
-          <Link to="/ventas" onClick={() => onCollapse(true)}>Ventas</Link>
+          <Link to="/ventas">Ventas</Link>
         </Menu.Item>
 
         <Menu.Item key="6" icon={<icons.LineChartOutlined />}>
-          <Link to="/reportes" onClick={() => onCollapse(true)}>Reportes</Link>
+          <Link to="/reportes">Reportes</Link>
         </Menu.Item>
 
         <Menu.Item key="7" icon={<icons.LogoutOutlined />} onClick={handleLogout}>
