@@ -15,29 +15,35 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
   }, []);
 
   return (
+    /* JSX: AGREGO CLASE wb-sidebar PARA APLICAR TU CSS PERSONALIZADO */
     <Layout.Sider
+      className={`wb-sidebar ${collapsed ? "is-collapsed" : ""}`}  // APLICA ESTILO GLOBAL DEL SIDEBAR
       collapsible
       collapsed={collapsed}
       onCollapse={onCollapse}
       breakpoint="lg"              // SE COLAPSA EN PANTALLAS GRANDES
       collapsedWidth="0"           // OCULTA COMPLETAMENTE EN COLAPSADO
-      style={{ background: "#001529" }} // COLOR DE FONDO SIDEBAR
+      style={{ background: "transparent" }} // USAMOS FONDO DE TU CSS, NO EL AZUL BASE
     >
-      {/* LOGO / TITULO */}
-      <div
-        className="logo-container"
-        style={{ padding: "16px", display: "flex", alignItems: "center" }}
-      >
-        <h1 style={{ color: "white", margin: 0, fontSize: "24px" }}>
-          Wilito BarberShop
-        </h1>
+      {/* LOGO / TITULO - USANDO ESTILO DEL LOGIN */}
+      <div className="wb-brand">
+      <div className="w-20 h-20 flex items-center justify-center rounded-full border-2 border-[#bfa46f] shadow-md bg-[#111]">
+        <span className="text-3xl font-extrabold tracking-wide text-[#bfa46f]">WB</span>
+      </div>
+        {!collapsed && (
+          <div className="wb-title">Wilito BarberShop</div>
+        )}
       </div>
 
+      <div className="wb-divider" />
+
+      {/* MENÚ PRINCIPAL */}
       <Menu
         theme="dark"
         mode="inline"
         defaultSelectedKeys={["1"]}
-        defaultOpenKeys={defaultOpen} // **ABRE INVENTARIO SI LA RUTA COINCIDE**
+        defaultOpenKeys={defaultOpen}
+        style={{ background: "transparent", borderInlineEnd: "none" }}
       >
         <Menu.Item key="1" icon={<icons.HomeOutlined />}>
           <Link to="/" onClick={() => onCollapse(true)}>Inicio</Link>
