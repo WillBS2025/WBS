@@ -9,10 +9,13 @@ function env_(){
             // HOJA PRODUCTOS
             SH_PRODUCTOS: "productos",
 
-            // HOJA SUMINISTROS (catálogo maestro)
+            // HOJA SUMINISTROS
             SH_SUMINISTROS: "Suministros",
 
-            // HOJA COMPRAS DE SUMINISTROS (lotes)
-            SH_COMPRAS_SUMINISTROS: "ComprasSuministros"
+            // HOJA COMPRAS DE SUMINISTROS
+            SH_COMPRAS_SUMINISTROS: "ComprasSuministros",
+
+            // HOJA SUCURSALES
+            SH_SUCURSALES: "sucursales",
     };
 }

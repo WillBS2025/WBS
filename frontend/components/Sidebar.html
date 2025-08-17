@@ -74,7 +74,7 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
           </Menu.Item>
 
           {/* SUBOPCIÓN: SUMINISTROS */}
-          <Menu.Item key="inventario-suministros" icon={<icons.ToolOutlined />}>
+          <Menu.Item key="inventario-suministros" icon={<icons.ScissorOutlined/>}>
             <Link to="/inventario/suministros">
               Suministros
             </Link>
@@ -87,6 +87,10 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
 
         <Menu.Item key="6" icon={<icons.LineChartOutlined />}>
           <Link to="/reportes">Reportes</Link>
+        </Menu.Item>
+
+        <Menu.Item key="8" icon={<icons.ShopOutlined />}>
+          <Link to="/Sucursales">Sucursales</Link>
         </Menu.Item>
 
         <Menu.Item key="7" icon={<icons.LogoutOutlined />} onClick={handleLogout}>
