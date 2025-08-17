@@ -8,7 +8,13 @@
  *   - env_() -> con SH_PRODUCTOS y SH_SUCURSALES
  *   - obtenerSheet(nombreHoja)
  *   - _read(sheet) -> array de objetos por encabezados
+ * 
  */
+
+// Nombre de hoja tomado del env (si no existe, usa fallback "productos")
+var SHEET_PRODUCTOS = (env_().SH_PRODUCTOS || "productos");
+
+
 
 /** =========================
  *  LISTAR

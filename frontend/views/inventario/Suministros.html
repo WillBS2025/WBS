@@ -1,13 +1,734 @@
-
-//<script type="text/jsx">
-
+<script type="text/jsx">
 function Suministros() {
-    return (
-        <div>
-            <h2>Sección de Suministros</h2>
-        </div>
-    );
+  const { useState, useEffect } = React;
+  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, Row, Col, Divider, Tag, Tabs, message } = antd;
+
+  /********************* ESTADO *********************/
+  const [suministros, setSuministros] = useState([]); // catálogo
+  const [compras, setCompras] = useState([]);         // lotes
+  const [loading, setLoading] = useState(false);
+
+  // filtros (para lotes)
+  const [q, setQ] = useState('');
+  const [fSucursal, setFSucursal] = useState(undefined);
+  const [fEstado, setFEstado] = useState(undefined);
+
+  // sucursales
+  const [sucursales, setSucursales] = useState([]);
+
+  // modal crear compra
+  const [form] = Form.useForm();
+  const [modalOpen, setModalOpen] = useState(false);
+
+  // modal editar compra (si lo usas)
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRecord, setEditRecord] = useState(null);
+  const [editForm] = Form.useForm();
+
+  // NUEVO: modal "Nuevo suministro"
+  const [sumForm] = Form.useForm();
+  const [sumOpen, setSumOpen] = useState(false);
+  const [selectNewInCompra, setSelectNewInCompra] = useState(false);
+
+  /********************* HELPERS *********************/
+  function safeParse(res) {
+    try { return (typeof res === 'string') ? JSON.parse(res) : res; }
+    catch(e){ return res; }
+  }
+  function toArray(x){ return Array.isArray(x) ? x : []; }
+
+  function pickArrayPayload(x) {
+    if (Array.isArray(x)) return x;
+    if (x && Array.isArray(x.data)) return x.data;
+    if (x && Array.isArray(x.rows)) return x.rows;
+    if (x && Array.isArray(x.values)) return x.values;
+    if (x && Array.isArray(x.suministros)) return x.suministros;
+    if (x && Array.isArray(x.compras)) return x.compras;
+    return [];
+  }
+
+  function formatNice(d){
+    if (!d) return '';
+    var dt = new Date(d);
+    if (isNaN(dt)) return String(d);
+    var y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), day = String(dt.getDate()).padStart(2,'0');
+    return y + '/' + m + '/' + day;
+  }
+  function formatHNL(value) {
+    var n = Number(value); if (!isFinite(n)) n = 0;
+    try { return 'L.' + new Intl.NumberFormat('en-US',{ minimumFractionDigits:2, maximumFractionDigits:2 }).format(n); }
+    catch(e){ return 'L.' + n.toFixed(2); }
+  }
+  function parseYMD(d) {
+    if (!d) return null;
+    var dt = new Date(d);
+    return isNaN(dt) ? null : dt;
+  }
+  function diffDaysInclusive(a, b) {
+    var da = parseYMD(a), db = parseYMD(b);
+    if (!da || !db) return null;
+    var ms = db.getTime() - da.getTime();
+    return Math.floor(ms/86400000) + 1;
+  }
+  function estadoLote(r){
+    var ini = r && r.fechaInicioUso;
+    var fin = r && r.fechaFinUso;
+    if (ini && !fin) return 'EN_USO';
+    if (ini && fin) return 'COMPLETADO';
+    return 'NUEVO';
+  }
+  function consumoDiarioCalc(cantidad, duracion){
+    var cant = Number(cantidad || 0);
+    var d = Number(duracion || 0);
+    if (!d) return null;
+    return cant / d;
+  }
+  function asInputYMD(d){
+    if (!d) return '';
+    var dt = new Date(d); if (isNaN(dt)) return '';
+    var y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), day = String(dt.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + day;
+  }
+  function todayYMD(){
+    var dt = new Date();
+    var y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), day = String(dt.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + day;
+  }
+
+  /********************* NORMALIZADORES *********************/
+  function normalizeSuministros(raw) {
+    var parsed = safeParse(raw);
+    var data = pickArrayPayload(parsed);
+    if (!Array.isArray(data)) return [];
+
+    if (data.length && typeof data[0] === 'object' && !Array.isArray(data[0])) return data;
+
+    var rows = data;
+    if (!rows.length) return [];
+    if (Array.isArray(rows[0])) {
+      var lower = rows[0].map(function(x){ return String(x||'').trim().toLowerCase(); });
+      var hasHeader = lower.indexOf('idsuministro') >= 0 && lower.indexOf('nombresuministro') >= 0;
+      if (hasHeader) {
+        var headers = rows[0], body = rows.slice(1);
+        function idx(h){ var i = headers.indexOf(h); return (i>=0? i : -1); }
+        return body.map(function(r, i){
+          var id = r[idx('idSuministro')];
+          return {
+            idSuministro: id,
+            nombreSuministro: r[idx('nombreSuministro')],
+            unidadBase: r[idx('unidadBase')],
+            categoria: r[idx('categoria')],
+            minStock: r[idx('minStock')],
+            estado: r[idx('estado')],
+            notas: r[idx('notas')],
+            key: (id != null ? id : i)
+          };
+        });
+      }
+    }
+    return rows.map(function(r, i){
+      var id = r[0];
+      return {
+        idSuministro: r[0],
+        nombreSuministro: r[1],
+        unidadBase: r[2],
+        categoria: r[3],
+        minStock: r[4],
+        estado: r[5],
+        notas: r[6],
+        key: (id != null ? id : i)
+      };
+    });
+  }
+
+  function normalizeCompras(raw) {
+    var parsed = safeParse(raw);
+    var data = pickArrayPayload(parsed);
+    if (!Array.isArray(data)) return [];
+
+    if (data.length && typeof data[0] === 'object' && !Array.isArray(data[0])) return data;
+
+    var rows = data;
+    if (!rows.length) return [];
+    if (Array.isArray(rows[0])) {
+      var lower = rows[0].map(function(x){ return String(x||'').trim().toLowerCase(); });
+      var hasHeader = lower.indexOf('idcompra') >= 0 && lower.indexOf('idsuministro') >= 0;
+      if (hasHeader) {
+        var headers = rows[0], body = rows.slice(1);
+        function idx(h){ var i = headers.indexOf(h); return (i>=0? i : -1); }
+        return body.map(function(r, i){
+          var id = r[idx('idCompra')];
+          return {
+            idCompra: id,
+            idSuministro: r[idx('idSuministro')],
+            sucursal: r[idx('sucursal')],
+            fechaCompra: r[idx('fechaCompra')],
+            cantidadUnidades: r[idx('cantidadUnidades')],
+            costoTotal: r[idx('costoTotal')],
+            fechaInicioUso: r[idx('fechaInicioUso')],
+            fechaFinUso: r[idx('fechaFinUso')],
+            observaciones: r[idx('observaciones')],
+            duracionDias: null, consumoDiario: null, estado: null,
+            key: (id != null ? id : i)
+          };
+        });
+      }
+    }
+    return rows.map(function(r, i){
+      var id = r[0];
+      return {
+        idCompra: r[0],
+        idSuministro: r[1],
+        sucursal: r[2],
+        fechaCompra: r[3],
+        cantidadUnidades: r[4],
+        costoTotal: r[5],
+        fechaInicioUso: r[6],
+        fechaFinUso: r[7],
+        observaciones: r[8],
+        duracionDias: null, consumoDiario: null, estado: null,
+        key: (id != null ? id : i)
+      };
+    });
+  }
+
+  /********************* CARGA INICIAL *********************/
+  function cargarTodo() {
+    setLoading(true);
+    var alive = true; var pending = 3;
+    function done(){ pending -= 1; if (alive && pending <= 0) setLoading(false); }
+
+    google.script.run
+      .withSuccessHandler(function(res){ if (!alive) return; setSuministros(normalizeSuministros(res)); done(); })
+      .withFailureHandler(function(){ if (!alive) return; setSuministros([]); done(); })
+      .listarSuministros();
+
+    google.script.run
+      .withSuccessHandler(function(res){ if (!alive) return; setCompras(normalizeCompras(res)); done(); })
+      .withFailureHandler(function(){ if (!alive) return; setCompras([]); done(); })
+      .listarComprasSuministros();
+
+    google.script.run
+      .withSuccessHandler(function(res){
+        if (!alive) return;
+        var r = safeParse(res);
+        setSucursales((r && r.ok && r.sucursales) ? r.sucursales : []);
+        done();
+      })
+      .withFailureHandler(function(){ if (!alive) return; setSucursales([]); done(); })
+      .listarSucursalesActivas();
+
+    return function cleanup(){ alive = false; };
+  }
+  useEffect(cargarTodo, []);
+
+  /********************* MAPEOS / ESTADÍSTICAS *********************/
+  var nombreById = {};
+  for (var i = 0; i < suministros.length; i++) nombreById[String(suministros[i].idSuministro)] = suministros[i].nombreSuministro;
+
+  var comprasBySum = {};
+  for (var j = 0; j < compras.length; j++) {
+    var c = compras[j];
+    var k = String(c.idSuministro);
+    if (!comprasBySum[k]) comprasBySum[k] = [];
+    comprasBySum[k].push(c);
+  }
+  function estadoConsumoDe(id) {
+    var arr = comprasBySum[String(id)] || [];
+    if (arr.some(function(x){ return x.fechaInicioUso && !x.fechaFinUso; })) return 'EN_USO';
+    if (arr.some(function(x){ return !x.fechaInicioUso && !x.fechaFinUso; })) return 'NUEVO';
+    if (arr.length > 0) return 'AGOTADO';
+    return 'SIN_COMPRAS';
+  }
+  function ultimaCompraDe(id) {
+    var arr = comprasBySum[String(id)] || [];
+    var max = null;
+    for (var i = 0; i < arr.length; i++) {
+      var d = parseYMD(arr[i].fechaCompra);
+      if (d && (!max || d > max)) max = d;
+    }
+    return max ? formatNice(max) : '';
+  }
+  var suministrosEnriquecidos = toArray(suministros).map(function(s){
+    var k = String(s.idSuministro);
+    return Object.assign({}, s, {
+      consumoEstado: estadoConsumoDe(k),
+      comprasCount: (comprasBySum[k] || []).length,
+      ultimaCompra: ultimaCompraDe(k)
+    });
+  });
+
+  /********************* FILTRO (LOTES) *********************/
+  var filtered = toArray(compras).filter(function(c){
+    var nom = (nombreById[String(c.idSuministro)] || '').toLowerCase();
+    var okQ = q ? nom.indexOf(q.toLowerCase().trim()) >= 0 : true;
+    var okS = fSucursal ? String(c.sucursal) === String(fSucursal) : true;
+    var e = c.estado || estadoLote(c);
+    var okE = fEstado ? String(e) === String(fEstado) : true;
+    return okQ && okS && okE;
+  });
+
+  /********************* ACCIONES: COMPRAS *********************/
+  function abrirNuevo(){ setSelectNewInCompra(false); form.resetFields(); setModalOpen(true); }
+
+  function onSubmit(values){
+    var payload = {
+      idSuministro: values.idSuministro,
+      sucursal: values.sucursal,
+      fechaCompra: values.fechaCompra,
+      cantidadUnidades: Number(values.cantidadUnidades || 0),
+      costoTotal: Number(values.costoTotal || 0),
+      fechaInicioUso: values.fechaInicioUso || '',
+      observaciones: values.observaciones || ''
+    };
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function(res){
+        var r = safeParse(res);
+        if (r && r.ok) { message.success('Compra registrada'); setModalOpen(false); cargarTodo(); }
+        else { Modal.error({ title: 'No se pudo crear', content: (r && r.message) || 'Error desconocido' }); setLoading(false); }
+      })
+      .withFailureHandler(function(err){
+        setLoading(false);
+        Modal.error({ title:'Error de servidor', content:String((err && err.message) || err) });
+      })
+      .crearCompraSuministro(JSON.stringify(payload));
+  }
+
+  function abrirEditarCompra(r){
+    setEditRecord(r);
+    editForm.setFieldsValue({
+      idCompra: r.idCompra,
+      idSuministro: String(r.idSuministro),
+      sucursal: r.sucursal || undefined,
+      fechaCompra: asInputYMD(r.fechaCompra),
+      cantidadUnidades: Number(r.cantidadUnidades || 0),
+      costoTotal: Number(r.costoTotal || 0),
+      fechaInicioUso: asInputYMD(r.fechaInicioUso),
+      fechaFinUso: asInputYMD(r.fechaFinUso),
+      observaciones: r.observaciones || ''
+    });
+    setEditOpen(true);
+  }
+  function onSubmitEdit(values){
+    var payload = {
+      idCompra: values.idCompra,
+      idSuministro: values.idSuministro,
+      sucursal: values.sucursal,
+      fechaCompra: values.fechaCompra,
+      cantidadUnidades: Number(values.cantidadUnidades || 0),
+      costoTotal: Number(values.costoTotal || 0),
+      fechaInicioUso: values.fechaInicioUso || '',
+      fechaFinUso: values.fechaFinUso || '',
+      observaciones: values.observaciones || ''
+    };
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function(res){
+        var r = (typeof res === 'string') ? JSON.parse(res) : res;
+        if (r && r.ok){ message.success('Compra actualizada'); setEditOpen(false); setEditRecord(null); cargarTodo(); }
+        else { Modal.error({ title:'No se pudo actualizar', content:(r && r.message) || 'Error' }); setLoading(false); }
+      })
+      .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content:String(err) }); })
+      .actualizarCompraSuministro(JSON.stringify(payload)); // <- si aún no lo tienes en backend, no pulses Guardar
+  }
+  function iniciarUso(idCompra){
+    Modal.confirm({
+      title:'Iniciar uso',
+      content:'Se colocará la fecha de inicio en HOY.',
+      onOk: function(){
+        google.script.run
+          .withSuccessHandler(function(res){
+            var r = (typeof res === 'string') ? JSON.parse(res) : res;
+            if (r && r.ok){ message.success('Lote en uso'); cargarTodo(); }
+            else { Modal.error({ title:'No se pudo iniciar', content:(r && r.message) || 'Error' }); }
+          })
+          .withFailureHandler(function(err){ Modal.error({ title:'Error de servidor', content:String(err) }); })
+          .iniciarUsoCompra(idCompra, todayYMD()); // si no existe en backend, no usar este botón aún
+      }
+    });
+  }
+  function marcarAgotado(record){
+    Modal.confirm({
+      title: 'Marcar lote como agotado',
+      content: 'Se colocará la fecha de fin en HOY. ¿Confirmas?',
+      okButtonProps:{ danger:true },
+      onOk: function(){
+        google.script.run
+          .withSuccessHandler(function(res){
+            var r = safeParse(res);
+            if (r && r.ok){ message.success('Lote marcado como agotado'); cargarTodo(); }
+            else { Modal.error({ title:'No se pudo marcar', content:(r && r.message) || 'Error' }); }
+          })
+          .withFailureHandler(function(err){
+            Modal.error({ title:'Error de servidor', content:String((err && err.message) || err) });
+          })
+          .marcarCompraAgotada(record.idCompra);
+      }
+    });
+  }
+  function reabrirCompra(idCompra){
+    Modal.confirm({
+      title:'Reabrir lote',
+      content:'Se limpiará la fecha de fin y volverá a EN USO.',
+      onOk: function(){
+        google.script.run
+          .withSuccessHandler(function(res){
+            var r = (typeof res === 'string') ? JSON.parse(res) : res;
+            if (r && r.ok){ message.success('Lote reabierto'); cargarTodo(); }
+            else { Modal.error({ title:'No se pudo reabrir', content:(r && r.message) || 'Error' }); }
+          })
+          .withFailureHandler(function(err){ Modal.error({ title:'Error de servidor', content:String(err) }); })
+          .reabrirCompra(idCompra); // si no existe en backend, no usar aún
+      }
+    });
+  }
+
+  /********************* ACCIONES: CATÁLOGO *********************/
+  function abrirNuevoSuministro(desdeCompra){
+    setSelectNewInCompra(!!desdeCompra);
+    sumForm.resetFields();
+    setSumOpen(true);
+  }
+  function onSubmitSuministro(values){
+    var payload = {
+      nombreSuministro: values.nombreSuministro,
+      unidadBase: values.unidadBase || '',
+      categoria: values.categoria || '',
+      minStock: Number(values.minStock || 0),
+      notas: values.notas || '',
+      estado: 'Activo'
+    };
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function(res){
+        var r = safeParse(res);
+        if (r && r.ok){
+          message.success('Suministro creado');
+          setSumOpen(false);
+          cargarTodo();
+          if (selectNewInCompra && r.idSuministro != null) {
+            form.setFieldsValue({ idSuministro: String(r.idSuministro) });
+            setModalOpen(true);
+          }
+        } else {
+          Modal.error({ title:'No se pudo crear', content:(r && r.message) || 'Error' });
+          setLoading(false);
+        }
+      })
+      .withFailureHandler(function(err){
+        setLoading(false);
+        Modal.error({ title:'Error de servidor', content:String(err) });
+      })
+      .crearSuministro(JSON.stringify(payload));
+  }
+
+  /********************* COLUMNAS *********************/
+  const columnsCompras = [
+    { title:'ID Compra', dataIndex:'idCompra', key:'idCompra', width:100,
+      sorter:function(a,b){ return Number(a.idCompra)-Number(b.idCompra); } },
+    { title:'Suministro', dataIndex:'idSuministro', key:'idSuministro',
+      render:function(v){ return nombreById[String(v)] || ('#'+v); } },
+    { title:'Sucursal', dataIndex:'sucursal', key:'sucursal', width:140,
+      render:function(v){ return v ? <Tag color="geekblue">{v}</Tag> : ''; } },
+    { title:'Fecha compra', dataIndex:'fechaCompra', key:'fechaCompra', width:120,
+      render:function(v){ return formatNice(v); } },
+    { title:'Cantidad (unidad base)', dataIndex:'cantidadUnidades', key:'cantidadUnidades', align:'right', width:170 },
+    { title:'Costo total', dataIndex:'costoTotal', key:'costoTotal', align:'right', width:130,
+      render:function(v){ return formatHNL(v); } },
+    { title:'Inicio uso', dataIndex:'fechaInicioUso', key:'fechaInicioUso', width:120,
+      render:function(v){ return formatNice(v); } },
+    { title:'Fin uso', dataIndex:'fechaFinUso', key:'fechaFinUso', width:120,
+      render:function(v){ return formatNice(v); } },
+    { title:'Duración (días)', dataIndex:'duracionDias', key:'duracionDias', align:'right', width:130,
+      render:function(_, r){
+        var d = (r.duracionDias != null) ? r.duracionDias : diffDaysInclusive(r.fechaInicioUso, r.fechaFinUso);
+        return d != null ? d : '';
+      }
+    },
+    { title:'Consumo/día', dataIndex:'consumoDiario', key:'consumoDiario', align:'right', width:120,
+      render:function(_, r){
+        var d = (r.duracionDias != null) ? r.duracionDias : diffDaysInclusive(r.fechaInicioUso, r.fechaFinUso);
+        var c = (r.consumoDiario != null) ? r.consumoDiario : consumoDiarioCalc(r.cantidadUnidades, d);
+        return (c == null) ? '' : Number(c).toFixed(2);
+      }
+    },
+    { title:'Estado', dataIndex:'estado', key:'estado', width:120,
+      render:function(v, r){
+        var e = v || estadoLote(r);
+        if (e === 'EN_USO') return <Tag color="gold">EN USO</Tag>;
+        if (e === 'COMPLETADO') return <Tag color="green">COMPLETADO</Tag>;
+        return <Tag>Nuevo</Tag>;
+      }
+    },
+    { title:'Acciones', key:'acciones', fixed:'right', width:260,
+      render:function(_,r){
+        var e = r.estado || estadoLote(r);
+        return (
+          <Space wrap>
+            <Button size="small" onClick={function(){ abrirEditarCompra(r); }}>Editar</Button>
+            {e === 'NUEVO' && (
+              <Button size="small" type="primary" onClick={function(){ iniciarUso(r.idCompra); }}>Iniciar uso</Button>
+            )}
+            {e === 'EN_USO' && (
+              <Button size="small" danger onClick={function(){ marcarAgotado(r); }}>Marcar agotado</Button>
+            )}
+            {e === 'COMPLETADO' && (
+              <Button size="small" onClick={function(){ reabrirCompra(r.idCompra); }}>Reabrir</Button>
+            )}
+          </Space>
+        );
+      }
+    }
+  ];
+
+  const columnsCatalogo = [
+    { title:'ID', dataIndex:'idSuministro', key:'idSuministro', width:90,
+      sorter:function(a,b){ return Number(a.idSuministro)-Number(b.idSuministro); } },
+    { title:'Nombre', dataIndex:'nombreSuministro', key:'nombreSuministro' },
+    { title:'Unidad base', dataIndex:'unidadBase', key:'unidadBase', width:130 },
+    { title:'Categoría', dataIndex:'categoria', key:'categoria', width:140 },
+    { title:'Min. stock', dataIndex:'minStock', key:'minStock', align:'right', width:110 },
+    { title:'Estado (cat.)', dataIndex:'estado', key:'estado', width:120,
+      render:function(v){ return <Tag color={v==='Activo'?'green':'default'}>{v||''}</Tag>; } },
+    { title:'Consumo', dataIndex:'consumoEstado', key:'consumoEstado', width:130,
+      render:function(v){
+        if (v === 'EN_USO') return <Tag color="gold">EN USO</Tag>;
+        if (v === 'NUEVO') return <Tag color="blue">NUEVO</Tag>;
+        if (v === 'AGOTADO') return <Tag color="red">AGOTADO</Tag>;
+        return <Tag>SIN COMPRAS</Tag>;
+      }
+    },
+    { title:'Veces comprado', dataIndex:'comprasCount', key:'comprasCount', width:130, align:'right' },
+    { title:'Última compra', dataIndex:'ultimaCompra', key:'ultimaCompra', width:130 },
+    { title:'Acciones', key:'acciones', width:140,
+      render:function(_, rec){
+        return (
+          <Button size="small" type="primary" onClick={function(){
+            form.setFieldsValue({ idSuministro: String(rec.idSuministro) });
+            setModalOpen(true);
+          }}>
+            Comprar
+          </Button>
+        );
+      }
+    }
+  ];
+
+  // opciones selects
+  var sucOptions = toArray(sucursales).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; });
+  var sumOptions = toArray(suministros).map(function(s){ return { value:String(s.idSuministro), label:s.nombreSuministro }; });
+
+  function resetFiltros(){ setQ(''); setFSucursal(undefined); setFEstado(undefined); }
+
+  /********************* UI (Tabs v4) *********************/
+  return (
+    <Card
+      title="Suministros"
+      extra={
+        <Space wrap>
+          <Button onClick={cargarTodo} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
+          <Button type="primary" onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Registrar compra</Button>
+          <Button onClick={function(){ abrirNuevoSuministro(false); }} icon={<icons.PlusOutlined />}>Nuevo suministro</Button>
+        </Space>
+      }
+    >
+      <Tabs defaultActiveKey="compras">
+        <Tabs.TabPane tab="Compras" key="compras">
+          <div>
+            {/* FILTROS */}
+            <Row gutter={[12,12]} align="bottom">
+              <Col xs={24} md={10}>
+                <label style={{ display:'block', marginBottom:4 }}>Buscar por suministro</label>
+                <Input allowClear placeholder="Papel higiénico, café…" value={q}
+                      onChange={function(e){ setQ(e.target.value); }} />
+              </Col>
+              <Col xs={12} md={6}>
+                <label style={{ display:'block', marginBottom:4 }}>Sucursal</label>
+                <Select options={sucOptions} allowClear placeholder="Todas"
+                        value={fSucursal} onChange={function(v){ setFSucursal(v); }} style={{ width:'100%' }} />
+              </Col>
+              <Col xs={12} md={6}>
+                <label style={{ display:'block', marginBottom:4 }}>Estado</label>
+                <Select allowClear placeholder="Todos" value={fEstado} onChange={function(v){ setFEstado(v); }}
+                        style={{ width:'100%' }}
+                        options={[
+                          { value:'NUEVO', label:'Nuevo' },
+                          { value:'EN_USO', label:'En uso' },
+                          { value:'COMPLETADO', label:'Completado' }
+                        ]}
+                />
+              </Col>
+              <Col xs={24} md={2}><Button onClick={resetFiltros} style={{ marginTop:22 }}>Limpiar</Button></Col>
+            </Row>
+
+            <Divider style={{ margin:'12px 0' }} />
+
+            <Table
+              dataSource={filtered}
+              columns={columnsCompras}
+              loading={loading}
+              rowKey={function(r){ return r.idCompra; }}
+              scroll={{ x: true }}
+              pagination={{ pageSize: 10 }}
+            />
+          </div>
+        </Tabs.TabPane>
+
+        <Tabs.TabPane tab="Catálogo" key="catalogo">
+          <div>
+            <Table
+              dataSource={suministrosEnriquecidos}
+              columns={columnsCatalogo}
+              loading={loading && compras.length===0}
+              rowKey={function(r){ return r.idSuministro; }}
+              scroll={{ x: true }}
+              pagination={{ pageSize: 10 }}
+            />
+          </div>
+        </Tabs.TabPane>
+      </Tabs>
+
+      {/* MODAL: NUEVA COMPRA */}
+      <Modal
+        centered
+        title={<Space><icons.PlusOutlined /><span>Registrar compra</span></Space>}
+        open={modalOpen} visible={modalOpen}
+        onCancel={function(){ setModalOpen(false); }}
+        onOk={function(){ form.submit(); }}
+        okText="Guardar" cancelText="Cancelar"
+        confirmLoading={loading}
+        destroyOnClose maskClosable={false} keyboard={false}
+      >
+        <Form form={form} layout="vertical" onFinish={onSubmit}>
+          <Form.Item label="Suministro" name="idSuministro"
+            rules={[{ required:true, message:'Seleccione un suministro' }]}
+            extra={<a onClick={function(){ setModalOpen(true); setSelectNewInCompra(true); setSumOpen(true); }}>¿No está? Agregar nuevo</a>}
+          >
+            <Select options={sumOptions} placeholder="Seleccione" showSearch optionFilterProp="label" />
+          </Form.Item>
+          <Form.Item label="Sucursal" name="sucursal"
+            rules={[{ required:true, message:'Seleccione una sucursal' }]}>
+            <Select options={sucOptions} placeholder="Seleccione" />
+          </Form.Item>
+          <Form.Item label="Fecha de compra" name="fechaCompra"
+            rules={[{ required:true, message:'Ingrese la fecha de compra' }]}>
+            <Input type="date" />
+          </Form.Item>
+          <Form.Item label="Fecha de inicio de uso" name="fechaInicioUso"
+            tooltip="Si empiezas a usar el mismo día, colócalo; si no, déjalo vacío.">
+            <Input type="date" />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item label="Cantidad (unidad base)" name="cantidadUnidades"
+                rules={[{ required:true, message:'Ingrese la cantidad' }]}>
+                <InputNumber min={0} step={1} style={{ width:'100%' }} placeholder="Ej. 48" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item label="Costo total (L.)" name="costoTotal"
+                rules={[{ required:true, message:'Ingrese el costo total' }]}>
+                <InputNumber min={0} step={0.01} style={{ width:'100%' }} placeholder="Ej. 1200.00" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item label="Observaciones" name="observaciones">
+            <Input.TextArea rows={3} placeholder="Notas opcionales" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* MODAL: EDITAR COMPRA (opcional si tienes backend) */}
+      <Modal
+        centered
+        title={<Space><icons.EditOutlined /><span>Editar compra</span></Space>}
+        open={editOpen} visible={editOpen}
+        onCancel={function(){ setEditOpen(false); setEditRecord(null); }}
+        onOk={function(){ editForm.submit(); }}
+        okText="Guardar" cancelText="Cancelar"
+        confirmLoading={loading}
+        destroyOnClose maskClosable={false} keyboard={false}
+      >
+        <Form form={editForm} layout="vertical" onFinish={onSubmitEdit}>
+          <Form.Item name="idCompra" style={{ display:'none' }}><Input /></Form.Item>
+
+          <Form.Item name="idSuministro" label="Suministro" rules={[{ required:true, message:'Seleccione un suministro' }]}>
+            <Select
+              options={toArray(suministros).map(function(s){ return { value:String(s.idSuministro), label:s.nombreSuministro }; })}
+              placeholder="Seleccione" showSearch optionFilterProp="label"
+            />
+          </Form.Item>
+
+          <Form.Item name="sucursal" label="Sucursal" rules={[{ required:true, message:'Seleccione una sucursal' }]}>
+            <Select options={toArray(sucursales).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })} placeholder="Seleccione" />
+          </Form.Item>
+
+          <Form.Item name="fechaCompra" label="Fecha de compra" rules={[{ required:true, message:'Ingrese la fecha de compra' }]}>
+            <Input type="date" />
+          </Form.Item>
+
+          <Row gutter={12}>
+            <Col span={12}><Form.Item name="fechaInicioUso" label="Inicio de uso"><Input type="date" /></Form.Item></Col>
+            <Col span={12}><Form.Item name="fechaFinUso" label="Fin de uso"><Input type="date" /></Form.Item></Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="cantidadUnidades" label="Cantidad (unidad base)" rules={[{ required:true, message:'Ingrese la cantidad' }]}>
+                <InputNumber min={0} step={1} style={{ width:'100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="costoTotal" label="Costo total (L.)" rules={[{ required:true, message:'Ingrese el costo total' }]}>
+                <InputNumber min={0} step={0.01} style={{ width:'100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item name="observaciones" label="Observaciones">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* MODAL: NUEVO SUMINISTRO */}
+      <Modal
+        centered
+        title={<Space><icons.PlusOutlined /><span>Nuevo suministro</span></Space>}
+        open={sumOpen} visible={sumOpen}
+        onCancel={function(){ setSumOpen(false); }}
+        onOk={function(){ sumForm.submit(); }}
+        okText="Crear" cancelText="Cancelar"
+        confirmLoading={loading}
+        destroyOnClose maskClosable={false} keyboard={false}
+      >
+        <Form form={sumForm} layout="vertical" onFinish={onSubmitSuministro}>
+          <Form.Item name="nombreSuministro" label="Nombre" rules={[{ required:true, message:'Ingrese el nombre' }]}>
+            <Input placeholder="Papel higiénico, Café..." />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="unidadBase" label="Unidad base">
+                <Input placeholder="rollo, bolsa, botella..." />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="categoria" label="Categoría">
+                <Input placeholder="Limpieza, Bebidas..." />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="minStock" label="Stock mínimo">
+            <InputNumber min={0} step={1} style={{ width:'100%' }} placeholder="0" />
+          </Form.Item>
+          <Form.Item name="notas" label="Notas">
+            <Input.TextArea rows={3} placeholder="Notas opcionales" />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </Card>
+  );
 }
-
-//</script>
-
+ReactDOM.render(<Suministros />, document.getElementById('root'));
+</script>
