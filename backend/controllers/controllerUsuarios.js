@@ -9,7 +9,7 @@ function verificarCredencialesLegacy(correo, contrasenia) {
         // y que el correo está en la columna 2 (índice 2) y la contraseña en la columna 3 (índice 3)
         // (ajusta estos índices si tu estructura es diferente)
         const columnaCorreo = 2; // Ajusta según tu hoja: 0-ID, 1-Nombre, 2-Correo, 3-Contraseña
-        const columnaContrasenia = 3; // Ajusta según tu hoja sheet
+        const columnaContrasenia = 3; // Ajusta según tu hoja
 
         for (let i = 1; i < datosUsuarios.length; i++) { // Empezamos en 1 para omitir la fila de encabezados
             const usuarioRegistrado = datosUsuarios[i][columnaCorreo];

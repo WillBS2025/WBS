@@ -58,8 +58,8 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
         </Menu.Item>
 
         {isSuperAdmin && (
-        <Menu.Item key="2" icon={<icons.FormOutlined />}>
-          <Link to="/formularioRegistro">Servicios</Link>
+        <Menu.Item key="2" icon={<icons.ScissorOutlined />}>
+          <Link to="/Servicios">Servicios</Link>
         </Menu.Item>
         )}
 
@@ -70,7 +70,7 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
         )}
 
         {/* ================================
-           INVENTARIO CON SUBMENÚ (2 SUBRAMA)
+          INVENTARIO CON SUBMENÚ (2 SUBRAMA)
            ================================ */}
         <Menu.SubMenu
           key="inventario"

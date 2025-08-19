@@ -54,12 +54,13 @@ function Routes() {
                             <div className="site-layout-background" style={{ padding: '10px 10px', minHeight: 360 }}>
                                 <Switch>
                                     <Route exact path="/" component={Inicio} />
-                                    <Route exact path="/formularioRegistro" component={FormularioRegistro} />
+                                    <Route exact path="/Servicios" component={Servicios} />
                                     <Route exact path="/Empleados" component={Empleados} />
                                     <Route exact path="/Inventario" component={Inventario} />
                                     <Route exact path="/Ventas" component={Ventas} />
                                     <Route exact path="/Reportes" component={Reportes} />
                                     <Route exact path="/Sucursales" component={Sucursales} />
+                                    
 
                                     {/* Rutas hijas de Inventario */}
                                     <Route exact path="/inventario/productos" component={Productos} />
