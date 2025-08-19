@@ -1,6 +1,13 @@
 //<script type="text/jsx">
 
 function Sidebar({ collapsed, onCollapse, handleLogout }) {
+  // === Roles (desde localStorage) ===
+  const [role, setRole] = React.useState(() => {
+    try { return (localStorage.getItem('userRole') || 'admin'); } catch (_) { return 'admin'; }
+  });
+  const norm = (role || '').toString().trim().toLowerCase();
+  const isAdmin = norm === 'admin';
+  const isSuperAdmin = norm === 'super_admin';
   // ================================
   // ABRE EL SUBMENÚ SI LA URL ES /inventario
   // ================================
@@ -50,13 +57,17 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
           <Link to="/">Inicio</Link>
         </Menu.Item>
 
+        {isSuperAdmin && (
         <Menu.Item key="2" icon={<icons.FormOutlined />}>
-          <Link to="/formularioRegistro">Registro</Link>
+          <Link to="/formularioRegistro">Servicios</Link>
         </Menu.Item>
+        )}
 
+        {isSuperAdmin && (
         <Menu.Item key="3" icon={<icons.TeamOutlined />}>
           <Link to="/empleados">Empleados</Link>
         </Menu.Item>
+        )}
 
         {/* ================================
            INVENTARIO CON SUBMENÚ (2 SUBRAMA)
@@ -82,16 +93,26 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
         </Menu.SubMenu>
 
         <Menu.Item key="5" icon={<icons.ShoppingCartOutlined />}>
-          <Link to="/ventas">Ventas</Link>
+          <Link to="/Ventas">Ventas</Link>
         </Menu.Item>
 
+        {isSuperAdmin && (
+        <Menu.Item key="gastos" icon={<icons.DollarOutlined />}>
+          <Link to="/Gastos">Gastos</Link>
+        </Menu.Item>
+        )}
+
+        {isSuperAdmin && (
         <Menu.Item key="6" icon={<icons.LineChartOutlined />}>
-          <Link to="/reportes">Reportes</Link>
+          <Link to="/Reportes">Reportes</Link>
         </Menu.Item>
+        )}
 
+        {isSuperAdmin && (
         <Menu.Item key="8" icon={<icons.ShopOutlined />}>
           <Link to="/Sucursales">Sucursales</Link>
         </Menu.Item>
+        )}
 
         <Menu.Item key="7" icon={<icons.LogoutOutlined />} onClick={handleLogout}>
           Cerrar Sesión

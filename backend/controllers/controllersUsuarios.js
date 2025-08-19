@@ -1,28 +1,37 @@
 // ... (Códido de verificacion de credenciales)
 
 function verificarCredenciales(correo, contrasenia) {
-    try {
-        const sheetUsuarios = obtenerSheet(env_().SH_REGISTRO_USUARIOS);
-        const datosUsuarios = sheetUsuarios.getDataRange().getDisplayValues();
-
-        // Asumiendo que las columnas son: ID, Nombre Completo, Correo, Contraseña
-        // y que el correo está en la columna 2 (índice 2) y la contraseña en la columna 3 (índice 3)
-        // (ajusta estos índices si tu estructura es diferente)
-        const columnaCorreo = 2; // Ajusta según tu hoja: 0-ID, 1-Nombre, 2-Correo, 3-Contraseña
-        const columnaContrasenia = 3; // Ajusta según tu hoja
-
-        for (let i = 1; i < datosUsuarios.length; i++) { // Empezamos en 1 para omitir la fila de encabezados
-            const usuarioRegistrado = datosUsuarios[i][columnaCorreo];
-            const contraseniaRegistrada = datosUsuarios[i][columnaContrasenia];
-
-            if (usuarioRegistrado === correo && contraseniaRegistrada === contrasenia) {
-                return { success: true, message: "Inicio de sesión exitoso" };
-            }
+  try {
+    const sheetUsuarios = obtenerSheet(env_().SH_REGISTRO_USUARIOS);
+    const datosUsuarios = sheetUsuarios.getDataRange().getDisplayValues();
+    // Columnas: id | nombreCompleto | correo | contrasenia | rol | estado
+    const COL_NOMBRE = 1, COL_CORREO = 2, COL_CONTRA = 3, COL_ROL = 4, COL_ESTADO = 5;
+    for (let i = 1; i < datosUsuarios.length; i++) {
+      const row = datosUsuarios[i];
+      if (row[COL_CORREO] === correo && row[COL_CONTRA] === contrasenia) {
+        const rol = (row[COL_ROL] || '').toString().trim();
+        const estado = (row[COL_ESTADO] || '').toString().trim();
+        if (estado && estado.toLowerCase() !== 'activo') {
+          return { success: false, message: "Usuario inactivo" };
         }
-        return { success: false, message: "Correo o contraseña incorrectos" };
-    } catch (error) {
-        return { success: false, message: "Error al verificar credenciales: " + error.message };
+        return {
+          success: true,
+          message: "Inicio de sesión exitoso",
+          role: rol || 'admin',
+          user: {
+            id: row[0],
+            nombreCompleto: row[COL_NOMBRE],
+            correo: row[COL_CORREO],
+            rol: rol || 'admin',
+            estado: estado || ''
+          }
+        };
+      }
     }
+    return { success: false, message: "Correo o contraseña incorrectos" };
+  } catch (error) {
+    return { success: false, message: "Error al verificar credenciales: " + error.message };
+  }
 }
 
 function guardarUsuario(usuario){

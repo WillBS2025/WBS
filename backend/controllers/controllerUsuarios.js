@@ -1,6 +1,6 @@
 // ... (código existente)
 
-function verificarCredenciales(correo, contrasenia) {
+function verificarCredencialesLegacy(correo, contrasenia) {
     try {
         const sheetUsuarios = obtenerSheet(env_().SH_REGISTRO_USUARIOS);
         const datosUsuarios = sheetUsuarios.getDataRange().getDisplayValues();

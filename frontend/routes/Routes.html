@@ -19,6 +19,7 @@ function Routes() {
     const handleLogout = () => {
         setIsAuthenticated(false);
         localStorage.removeItem('isAuthenticated');
+        try { localStorage.removeItem('userRole'); localStorage.removeItem('userInfo'); } catch (_) {}
         history.push("/login");
     };
 
