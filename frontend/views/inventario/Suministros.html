@@ -13,6 +13,12 @@ function Suministros() {
   const [fSucursal, setFSucursal] = useState(undefined);
   const [fEstado, setFEstado] = useState(undefined);
 
+  // ******************* FILTROS PARA CATÁLOGO *******************
+  const [qCat, setQCat] = useState('');                     // BUSCAR POR NOMBRE
+  const [fCatCategoria, setFCatCategoria] = useState();     // FILTRO CATEGORÍA
+  const [fCatUnidadBase, setFCatUnidadBase] = useState();   // FILTRO UNIDAD BASE
+  const [fCatConsumo, setFCatConsumo] = useState();         // FILTRO ESTADO DE CONSUMO
+
   // sucursales
   const [sucursales, setSucursales] = useState([]);
 
@@ -20,15 +26,19 @@ function Suministros() {
   const [form] = Form.useForm();
   const [modalOpen, setModalOpen] = useState(false);
 
-  // modal editar compra (si lo usas)
+  // modal editar compra
   const [editOpen, setEditOpen] = useState(false);
   const [editRecord, setEditRecord] = useState(null);
   const [editForm] = Form.useForm();
 
-  // NUEVO: modal "Nuevo suministro"
-  const [sumForm] = Form.useForm();
+  // MODALES DE SUMINISTRO
+  const [sumForm] = Form.useForm();        // NUEVO SUMINISTRO
   const [sumOpen, setSumOpen] = useState(false);
   const [selectNewInCompra, setSelectNewInCompra] = useState(false);
+
+  const [sumEditForm] = Form.useForm();    // EDITAR SUMINISTRO
+  const [sumEditOpen, setSumEditOpen] = useState(false);
+  const [sumEditRecord, setSumEditRecord] = useState(null);
 
   /********************* HELPERS *********************/
   function safeParse(res) {
@@ -87,12 +97,21 @@ function Suministros() {
     if (!d) return '';
     var dt = new Date(d); if (isNaN(dt)) return '';
     var y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), day = String(dt.getDate()).padStart(2,'0');
-    return y + '-' + m + '-' + day;
+    return y - 0 + '-' + m + '-' + day;
   }
   function todayYMD(){
     var dt = new Date();
     var y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), day = String(dt.getDate()).padStart(2,'0');
     return y + '-' + m + '-' + day;
+  }
+
+  // *** NUEVO: EXTRAER NÚMERO DESDE 'unidadBase' (EJ. "50", "bolsa (24)", "x12") ***
+  function extractNumericFromUnidadBase(txt){
+    var s = String(txt == null ? '' : txt);
+    var m = s.match(/(\d+(\.\d+)?)/);
+    if (!m) return null;
+    var v = Number(m[1]);
+    return isFinite(v) ? v : null;
   }
 
   /********************* NORMALIZADORES *********************/
@@ -224,7 +243,14 @@ function Suministros() {
 
   /********************* MAPEOS / ESTADÍSTICAS *********************/
   var nombreById = {};
-  for (var i = 0; i < suministros.length; i++) nombreById[String(suministros[i].idSuministro)] = suministros[i].nombreSuministro;
+  var unidadBaseById = {};
+  var unidadCapById = {}; // *** NUEVO: LÍMITE NUMÉRICO EXTRAÍDO DE unidadBase ***
+  for (var i = 0; i < suministros.length; i++) {
+    var s = suministros[i];
+    nombreById[String(s.idSuministro)] = s.nombreSuministro;
+    unidadBaseById[String(s.idSuministro)] = s.unidadBase;
+    unidadCapById[String(s.idSuministro)] = extractNumericFromUnidadBase(s.unidadBase);
+  }
 
   var comprasBySum = {};
   for (var j = 0; j < compras.length; j++) {
@@ -243,8 +269,8 @@ function Suministros() {
   function ultimaCompraDe(id) {
     var arr = comprasBySum[String(id)] || [];
     var max = null;
-    for (var i = 0; i < arr.length; i++) {
-      var d = parseYMD(arr[i].fechaCompra);
+    for (var i2 = 0; i2 < arr.length; i2++) {
+      var d = parseYMD(arr[i2].fechaCompra);
       if (d && (!max || d > max)) max = d;
     }
     return max ? formatNice(max) : '';
@@ -268,8 +294,62 @@ function Suministros() {
     return okQ && okS && okE;
   });
 
+  // OPCIONES PARA FILTROS DE CATÁLOGO
+  var catCategorias = Array.from(new Set(toArray(suministros).map(function(s){ return s.categoria; }).filter(function(x){ return !!x; })));
+  var catUnidades  = Array.from(new Set(toArray(suministros).map(function(s){ return s.unidadBase; }).filter(function(x){ return !!x; })));
+
+  // FILTRADO DE CATÁLOGO
+  var catalogoFiltered = toArray(suministrosEnriquecidos).filter(function(s){
+    var okQ = qCat ? String(s.nombreSuministro || '').toLowerCase().indexOf(qCat.toLowerCase().trim()) >= 0 : true;
+    var okC = fCatCategoria ? String(s.categoria) === String(fCatCategoria) : true;
+    var okU = fCatUnidadBase ? String(s.unidadBase) === String(fCatUnidadBase) : true;
+    var okE = fCatConsumo ? String(s.consumoEstado) === String(fCatConsumo) : true;
+    return okQ && okC && okU && okE;
+  });
+
   /********************* ACCIONES: COMPRAS *********************/
   function abrirNuevo(){ setSelectNewInCompra(false); form.resetFields(); setModalOpen(true); }
+
+  // *** VALIDADORES REUTILIZABLES (COMPRAS): FECHAS Y CANTIDAD ***
+  function validateFechaNoFutura(_, value){
+    if (!value) return Promise.resolve();
+    var d = parseYMD(value), t = new Date();
+    var today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    if (!d) return Promise.reject(new Error('Fecha inválida'));
+    if (d > today) return Promise.reject(new Error('La fecha no puede ser futura'));
+    return Promise.resolve();
+  }
+  function validateInicioVsCompra(getter, _rule, value){
+    if (!value) return Promise.resolve();
+    var fCompra = parseYMD(getter('fechaCompra'));
+    var fInicio = parseYMD(value);
+    var t = new Date(); var today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    if (!fInicio) return Promise.reject(new Error('Fecha inválida'));
+    if (fInicio > today) return Promise.reject(new Error('La fecha no puede ser futura'));
+    if (fCompra && fInicio < fCompra) return Promise.reject(new Error('El inicio no puede ser anterior a la compra'));
+    return Promise.resolve();
+  }
+  function validateFinVsInicioCompra(getter, _rule, value){
+    if (!value) return Promise.resolve();
+    var fCompra = parseYMD(getter('fechaCompra'));
+    var fInicio = parseYMD(getter('fechaInicioUso'));
+    var fFin = parseYMD(value);
+    var t = new Date(); var today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
+    if (!fFin) return Promise.reject(new Error('Fecha inválida'));
+    if (fFin > today) return Promise.reject(new Error('La fecha no puede ser futura'));
+    if (fCompra && fFin < fCompra) return Promise.reject(new Error('El fin no puede ser anterior a la compra'));
+    if (fInicio && fFin < fInicio) return Promise.reject(new Error('El fin no puede ser anterior al inicio'));
+    return Promise.resolve();
+  }
+  function validateCantidadVsUnidadBase(getter, _rule, value){
+    if (value == null) return Promise.resolve();
+    var id = getter('idSuministro');
+    var cap = id != null ? unidadCapById[String(id)] : null;
+    if (cap != null && Number(value) > Number(cap)) {
+      return Promise.reject(new Error('La cantidad no puede ser mayor que ' + cap + ' (unidad base registrada).'));
+    }
+    return Promise.resolve();
+  }
 
   function onSubmit(values){
     var payload = {
@@ -330,7 +410,7 @@ function Suministros() {
         else { Modal.error({ title:'No se pudo actualizar', content:(r && r.message) || 'Error' }); setLoading(false); }
       })
       .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content:String(err) }); })
-      .actualizarCompraSuministro(JSON.stringify(payload)); // <- si aún no lo tienes en backend, no pulses Guardar
+      .actualizarCompraSuministro(JSON.stringify(payload)); // <- SI AÚN NO EXISTE EN BACKEND, NO PRESIONAR "GUARDAR"
   }
   function iniciarUso(idCompra){
     Modal.confirm({
@@ -344,7 +424,7 @@ function Suministros() {
             else { Modal.error({ title:'No se pudo iniciar', content:(r && r.message) || 'Error' }); }
           })
           .withFailureHandler(function(err){ Modal.error({ title:'Error de servidor', content:String(err) }); })
-          .iniciarUsoCompra(idCompra, todayYMD()); // si no existe en backend, no usar este botón aún
+          .iniciarUsoCompra(idCompra, todayYMD());
       }
     });
   }
@@ -357,29 +437,26 @@ function Suministros() {
         google.script.run
           .withSuccessHandler(function(res){
             var r = safeParse(res);
-            if (r && r.ok){ message.success('Lote marcado como agotado'); cargarTodo(); }
-            else { Modal.error({ title:'No se pudo marcar', content:(r && r.message) || 'Error' }); }
+            if (r && r.ok){
+              message.success('Lote marcado como agotado');
+              // *** BLOQUEAR INMEDIATAMENTE LA FILA EN UI Y QUITAR ACCIONES ***
+              setCompras(function(prev){
+                return toArray(prev).map(function(c){
+                  if (String(c.idCompra) === String(record.idCompra)){
+                    return Object.assign({}, c, { fechaFinUso: todayYMD(), estado: 'COMPLETADO' });
+                  }
+                  return c;
+                });
+              });
+              cargarTodo();
+            } else {
+              Modal.error({ title:'No se pudo marcar', content:(r && r.message) || 'Error' });
+            }
           })
           .withFailureHandler(function(err){
             Modal.error({ title:'Error de servidor', content:String((err && err.message) || err) });
           })
           .marcarCompraAgotada(record.idCompra);
-      }
-    });
-  }
-  function reabrirCompra(idCompra){
-    Modal.confirm({
-      title:'Reabrir lote',
-      content:'Se limpiará la fecha de fin y volverá a EN USO.',
-      onOk: function(){
-        google.script.run
-          .withSuccessHandler(function(res){
-            var r = (typeof res === 'string') ? JSON.parse(res) : res;
-            if (r && r.ok){ message.success('Lote reabierto'); cargarTodo(); }
-            else { Modal.error({ title:'No se pudo reabrir', content:(r && r.message) || 'Error' }); }
-          })
-          .withFailureHandler(function(err){ Modal.error({ title:'Error de servidor', content:String(err) }); })
-          .reabrirCompra(idCompra); // si no existe en backend, no usar aún
       }
     });
   }
@@ -423,36 +500,77 @@ function Suministros() {
       .crearSuministro(JSON.stringify(payload));
   }
 
+  // *** NUEVO: EDITAR SUMINISTRO ***
+  function abrirEditarSuministro(rec){
+    setSumEditRecord(rec);
+    sumEditForm.setFieldsValue({
+      idSuministro: rec.idSuministro,
+      nombreSuministro: rec.nombreSuministro || '',
+      unidadBase: rec.unidadBase || '',
+      categoria: rec.categoria || '',
+      minStock: Number(rec.minStock || 0),  // SE MANTIENE OCULTO
+      notas: rec.notas || '',
+      estado: rec.estado || 'Activo'
+    });
+    setSumEditOpen(true);
+  }
+  function onSubmitSuministroEdit(values){
+    var payload = {
+      idSuministro: values.idSuministro,
+      nombreSuministro: values.nombreSuministro,
+      unidadBase: values.unidadBase || '',
+      categoria: values.categoria || '',
+      minStock: Number(values.minStock || 0),
+      notas: values.notas || '',
+      estado: values.estado || 'Activo'
+    };
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function(res){
+        var r = safeParse(res);
+        if (r && r.ok){
+          message.success('Suministro actualizado');
+          setSumEditOpen(false);
+          setSumEditRecord(null);
+          cargarTodo();
+        } else {
+          Modal.error({ title:'No se pudo actualizar', content:(r && r.message) || 'Error' });
+          setLoading(false);
+        }
+      })
+      .withFailureHandler(function(err){
+        setLoading(false);
+        Modal.error({ title:'Error de servidor', content:String(err) });
+      })
+      .actualizarSuministro(JSON.stringify(payload)); // <- SI AÚN NO EXISTE EN BACKEND, NO PRESIONAR "GUARDAR"
+  }
+
   /********************* COLUMNAS *********************/
+  // *** COMPRAS: CAMBIO DE TÍTULO A "No." Y REORDENADAS POR RELEVANCIA ***
   const columnsCompras = [
-    { title:'ID Compra', dataIndex:'idCompra', key:'idCompra', width:100,
+    { title:'No.', dataIndex:'idCompra', key:'idCompra', width:90,
       sorter:function(a,b){ return Number(a.idCompra)-Number(b.idCompra); } },
-    { title:'Suministro', dataIndex:'idSuministro', key:'idSuministro',
+
+    { title:'Suministro', dataIndex:'idSuministro', key:'idSuministro', width:200,
       render:function(v){ return nombreById[String(v)] || ('#'+v); } },
-    { title:'Sucursal', dataIndex:'sucursal', key:'sucursal', width:140,
+
+    { title:'Sucursal', dataIndex:'sucursal', key:'sucursal', width:160,
       render:function(v){ return v ? <Tag color="geekblue">{v}</Tag> : ''; } },
-    { title:'Fecha compra', dataIndex:'fechaCompra', key:'fechaCompra', width:120,
+
+    { title:'Fecha compra', dataIndex:'fechaCompra', key:'fechaCompra', width:130,
       render:function(v){ return formatNice(v); } },
+
     { title:'Cantidad (unidad base)', dataIndex:'cantidadUnidades', key:'cantidadUnidades', align:'right', width:170 },
+
     { title:'Costo total', dataIndex:'costoTotal', key:'costoTotal', align:'right', width:130,
       render:function(v){ return formatHNL(v); } },
-    { title:'Inicio uso', dataIndex:'fechaInicioUso', key:'fechaInicioUso', width:120,
+
+    { title:'Inicio uso', dataIndex:'fechaInicioUso', key:'fechaInicioUso', width:130,
       render:function(v){ return formatNice(v); } },
-    { title:'Fin uso', dataIndex:'fechaFinUso', key:'fechaFinUso', width:120,
+
+    { title:'Fin uso', dataIndex:'fechaFinUso', key:'fechaFinUso', width:130,
       render:function(v){ return formatNice(v); } },
-    { title:'Duración (días)', dataIndex:'duracionDias', key:'duracionDias', align:'right', width:130,
-      render:function(_, r){
-        var d = (r.duracionDias != null) ? r.duracionDias : diffDaysInclusive(r.fechaInicioUso, r.fechaFinUso);
-        return d != null ? d : '';
-      }
-    },
-    { title:'Consumo/día', dataIndex:'consumoDiario', key:'consumoDiario', align:'right', width:120,
-      render:function(_, r){
-        var d = (r.duracionDias != null) ? r.duracionDias : diffDaysInclusive(r.fechaInicioUso, r.fechaFinUso);
-        var c = (r.consumoDiario != null) ? r.consumoDiario : consumoDiarioCalc(r.cantidadUnidades, d);
-        return (c == null) ? '' : Number(c).toFixed(2);
-      }
-    },
+
     { title:'Estado', dataIndex:'estado', key:'estado', width:120,
       render:function(v, r){
         var e = v || estadoLote(r);
@@ -461,9 +579,28 @@ function Suministros() {
         return <Tag>Nuevo</Tag>;
       }
     },
-    { title:'Acciones', key:'acciones', fixed:'right', width:260,
+
+    { title:'Duración (días)', dataIndex:'duracionDias', key:'duracionDias', align:'right', width:140,
+      render:function(_, r){
+        var d = (r.duracionDias != null) ? r.duracionDias : diffDaysInclusive(r.fechaInicioUso, r.fechaFinUso);
+        return d != null ? d : '';
+      }
+    },
+
+    { title:'Consumo/día', dataIndex:'consumoDiario', key:'consumoDiario', align:'right', width:130,
+      render:function(_, r){
+        var d = (r.duracionDias != null) ? r.duracionDias : diffDaysInclusive(r.fechaInicioUso, r.fechaFinUso);
+        var c = (r.consumoDiario != null) ? r.consumoDiario : consumoDiarioCalc(r.cantidadUnidades, d);
+        return (c == null) ? '' : Number(c).toFixed(2);
+      }
+    },
+
+    { title:'Acciones', key:'acciones', fixed:'right', width:280,
       render:function(_,r){
         var e = r.estado || estadoLote(r);
+        // SI ESTÁ COMPLETADO, QUITAR ACCIONES (CELDA VACÍA)
+        if (e === 'COMPLETADO') return null;
+
         return (
           <Space wrap>
             <Button size="small" onClick={function(){ abrirEditarCompra(r); }}>Editar</Button>
@@ -473,24 +610,28 @@ function Suministros() {
             {e === 'EN_USO' && (
               <Button size="small" danger onClick={function(){ marcarAgotado(r); }}>Marcar agotado</Button>
             )}
-            {e === 'COMPLETADO' && (
-              <Button size="small" onClick={function(){ reabrirCompra(r.idCompra); }}>Reabrir</Button>
-            )}
           </Space>
         );
       }
     }
   ];
 
+  // COLUMNAS CATÁLOGO (con cambios previos: No., columnas ocultas)
   const columnsCatalogo = [
-    { title:'ID', dataIndex:'idSuministro', key:'idSuministro', width:90,
+    { title:'No.', dataIndex:'idSuministro', key:'idSuministro', width:90,
       sorter:function(a,b){ return Number(a.idSuministro)-Number(b.idSuministro); } },
     { title:'Nombre', dataIndex:'nombreSuministro', key:'nombreSuministro' },
     { title:'Unidad base', dataIndex:'unidadBase', key:'unidadBase', width:130 },
     { title:'Categoría', dataIndex:'categoria', key:'categoria', width:140 },
-    { title:'Min. stock', dataIndex:'minStock', key:'minStock', align:'right', width:110 },
-    { title:'Estado (cat.)', dataIndex:'estado', key:'estado', width:120,
-      render:function(v){ return <Tag color={v==='Activo'?'green':'default'}>{v||''}</Tag>; } },
+    { title:'Min. stock', dataIndex:'minStock', key:'minStock', align:'right', width:0,
+      onHeaderCell: function(){ return { style:{ display:'none' } }; },
+      onCell: function(){ return { style:{ display:'none' } }; }
+    },
+    { title:'Estado (cat.)', dataIndex:'estado', key:'estado', width:0,
+      render:function(v){ return <Tag color={v==='Activo'?'green':'default'}>{v||''}</Tag>; },
+      onHeaderCell: function(){ return { style:{ display:'none' } }; },
+      onCell: function(){ return { style:{ display:'none' } }; }
+    },
     { title:'Consumo', dataIndex:'consumoEstado', key:'consumoEstado', width:130,
       render:function(v){
         if (v === 'EN_USO') return <Tag color="gold">EN USO</Tag>;
@@ -501,15 +642,21 @@ function Suministros() {
     },
     { title:'Veces comprado', dataIndex:'comprasCount', key:'comprasCount', width:130, align:'right' },
     { title:'Última compra', dataIndex:'ultimaCompra', key:'ultimaCompra', width:130 },
-    { title:'Acciones', key:'acciones', width:140,
+    { title:'Acciones', key:'acciones', width:220,
       render:function(_, rec){
         return (
-          <Button size="small" type="primary" onClick={function(){
-            form.setFieldsValue({ idSuministro: String(rec.idSuministro) });
-            setModalOpen(true);
-          }}>
-            Comprar
-          </Button>
+          <Space>
+            <Button size="small" type="primary" onClick={function(){
+              form.setFieldsValue({ idSuministro: String(rec.idSuministro) });
+              setModalOpen(true);
+            }}>
+              Comprar
+            </Button>
+            {/* NUEVO: EDITAR SUMINISTRO */}
+            <Button size="small" onClick={function(){ abrirEditarSuministro(rec); }}>
+              Editar
+            </Button>
+          </Space>
         );
       }
     }
@@ -520,6 +667,7 @@ function Suministros() {
   var sumOptions = toArray(suministros).map(function(s){ return { value:String(s.idSuministro), label:s.nombreSuministro }; });
 
   function resetFiltros(){ setQ(''); setFSucursal(undefined); setFEstado(undefined); }
+  function resetFiltrosCatalogo(){ setQCat(''); setFCatCategoria(undefined); setFCatUnidadBase(undefined); setFCatConsumo(undefined); }
 
   /********************* UI (Tabs v4) *********************/
   return (
@@ -533,7 +681,67 @@ function Suministros() {
         </Space>
       }
     >
-      <Tabs defaultActiveKey="compras">
+      {/* ESTILOS PARA BLOQUEAR FILAS COMPLETADAS */}
+      <style>
+        {`
+          .row-bloqueado { pointer-events: none; }
+          .row-bloqueado td { opacity: 0.6; }
+          .row-bloqueado .ant-btn { display: none !important; }
+        `}
+      </style>
+
+      <Tabs defaultActiveKey="catalogo">
+        <Tabs.TabPane tab="Catálogo" key="catalogo">
+          <div>
+            {/* FILTROS CATÁLOGO */}
+            <Row gutter={[12,12]} align="bottom" style={{ marginBottom: 12 }}>
+              <Col xs={24} md={10}>
+                <label style={{ display:'block', marginBottom:4 }}>Buscar por nombre</label>
+                <Input allowClear placeholder="Papel higiénico, Café…"
+                       value={qCat} onChange={function(e){ setQCat(e.target.value); }} />
+              </Col>
+              <Col xs={12} md={4}>
+                <label style={{ display:'block', marginBottom:4 }}>Categoría</label>
+                <Select allowClear placeholder="Todas"
+                        value={fCatCategoria} onChange={function(v){ setFCatCategoria(v); }}
+                        style={{ width:'100%' }}
+                        options={Array.from(new Set(catCategorias)).map(function(c){ return { value:c, label:c }; })} />
+              </Col>
+              <Col xs={12} md={4}>
+                <label style={{ display:'block', marginBottom:4 }}>Unidad base</label>
+                <Select allowClear placeholder="Todas"
+                        value={fCatUnidadBase} onChange={function(v){ setFCatUnidadBase(v); }}
+                        style={{ width:'100%' }}
+                        options={Array.from(new Set(catUnidades)).map(function(u){ return { value:u, label:u }; })} />
+              </Col>
+              <Col xs={12} md={4}>
+                <label style={{ display:'block', marginBottom:4 }}>Estado consumo</label>
+                <Select allowClear placeholder="Todos"
+                        value={fCatConsumo} onChange={function(v){ setFCatConsumo(v); }}
+                        style={{ width:'100%' }}
+                        options={[
+                          { value:'NUEVO', label:'Nuevo' },
+                          { value:'EN_USO', label:'En uso' },
+                          { value:'AGOTADO', label:'Agotado' },
+                          { value:'SIN_COMPRAS', label:'Sin compras' }
+                        ]} />
+              </Col>
+              <Col xs={24} md={2}>
+                <Button onClick={resetFiltrosCatalogo} style={{ marginTop:22 }}>Limpiar</Button>
+              </Col>
+            </Row>
+
+            <Table
+              dataSource={catalogoFiltered}
+              columns={columnsCatalogo}
+              loading={loading && compras.length===0}
+              rowKey={function(r){ return r.idSuministro; }}
+              scroll={{ x: true }}
+              pagination={{ pageSize: 10 }}
+            />
+          </div>
+        </Tabs.TabPane>
+
         <Tabs.TabPane tab="Compras" key="compras">
           <div>
             {/* FILTROS */}
@@ -571,19 +779,10 @@ function Suministros() {
               rowKey={function(r){ return r.idCompra; }}
               scroll={{ x: true }}
               pagination={{ pageSize: 10 }}
-            />
-          </div>
-        </Tabs.TabPane>
-
-        <Tabs.TabPane tab="Catálogo" key="catalogo">
-          <div>
-            <Table
-              dataSource={suministrosEnriquecidos}
-              columns={columnsCatalogo}
-              loading={loading && compras.length===0}
-              rowKey={function(r){ return r.idSuministro; }}
-              scroll={{ x: true }}
-              pagination={{ pageSize: 10 }}
+              rowClassName={function(record){
+                var e = record.estado || estadoLote(record);
+                return e === 'COMPLETADO' ? 'row-bloqueado' : '';
+              }}
             />
           </div>
         </Tabs.TabPane>
@@ -607,22 +806,39 @@ function Suministros() {
           >
             <Select options={sumOptions} placeholder="Seleccione" showSearch optionFilterProp="label" />
           </Form.Item>
+
           <Form.Item label="Sucursal" name="sucursal"
             rules={[{ required:true, message:'Seleccione una sucursal' }]}>
             <Select options={sucOptions} placeholder="Seleccione" />
           </Form.Item>
+
           <Form.Item label="Fecha de compra" name="fechaCompra"
-            rules={[{ required:true, message:'Ingrese la fecha de compra' }]}>
+            rules={[
+              { required:true, message:'Ingrese la fecha de compra' },
+              { validator: validateFechaNoFutura }
+            ]}>
             <Input type="date" />
           </Form.Item>
+
           <Form.Item label="Fecha de inicio de uso" name="fechaInicioUso"
-            tooltip="Si empiezas a usar el mismo día, colócalo; si no, déjalo vacío.">
+            tooltip="Si empiezas a usar el mismo día, colócalo; si no, déjalo vacío."
+            rules={[
+              { validator: validateInicioVsCompra.bind(null, form.getFieldValue) }
+            ]}>
             <Input type="date" />
           </Form.Item>
+
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item label="Cantidad (unidad base)" name="cantidadUnidades"
-                rules={[{ required:true, message:'Ingrese la cantidad' }]}>
+              <Form.Item
+                label="Cantidad (unidad base)"
+                name="cantidadUnidades"
+                rules={[
+                  { required:true, message:'Ingrese la cantidad' },
+                  { validator: validateCantidadVsUnidadBase.bind(null, form.getFieldValue) }
+                ]}
+                dependencies={['idSuministro']}  /* REVALIDAR SI CAMBIA EL SUMINISTRO */
+              >
                 <InputNumber min={0} step={1} style={{ width:'100%' }} placeholder="Ej. 48" />
               </Form.Item>
             </Col>
@@ -633,13 +849,14 @@ function Suministros() {
               </Form.Item>
             </Col>
           </Row>
+
           <Form.Item label="Observaciones" name="observaciones">
             <Input.TextArea rows={3} placeholder="Notas opcionales" />
           </Form.Item>
         </Form>
       </Modal>
 
-      {/* MODAL: EDITAR COMPRA (opcional si tienes backend) */}
+      {/* MODAL: EDITAR COMPRA */}
       <Modal
         centered
         title={<Space><icons.EditOutlined /><span>Editar compra</span></Space>}
@@ -664,18 +881,40 @@ function Suministros() {
             <Select options={toArray(sucursales).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })} placeholder="Seleccione" />
           </Form.Item>
 
-          <Form.Item name="fechaCompra" label="Fecha de compra" rules={[{ required:true, message:'Ingrese la fecha de compra' }]}>
+          <Form.Item name="fechaCompra" label="Fecha de compra"
+            rules={[
+              { required:true, message:'Ingrese la fecha de compra' },
+              { validator: validateFechaNoFutura }
+            ]}>
             <Input type="date" />
           </Form.Item>
 
           <Row gutter={12}>
-            <Col span={12}><Form.Item name="fechaInicioUso" label="Inicio de uso"><Input type="date" /></Form.Item></Col>
-            <Col span={12}><Form.Item name="fechaFinUso" label="Fin de uso"><Input type="date" /></Form.Item></Col>
+            <Col span={12}>
+              <Form.Item name="fechaInicioUso" label="Inicio de uso"
+                rules={[ { validator: validateInicioVsCompra.bind(null, editForm.getFieldValue) } ]}>
+                <Input type="date" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="fechaFinUso" label="Fin de uso"
+                rules={[ { validator: validateFinVsInicioCompra.bind(null, editForm.getFieldValue) } ]}>
+                <Input type="date" />
+              </Form.Item>
+            </Col>
           </Row>
 
           <Row gutter={12}>
             <Col span={12}>
-              <Form.Item name="cantidadUnidades" label="Cantidad (unidad base)" rules={[{ required:true, message:'Ingrese la cantidad' }]}>
+              <Form.Item
+                name="cantidadUnidades"
+                label="Cantidad (unidad base)"
+                rules={[
+                  { required:true, message:'Ingrese la cantidad' },
+                  { validator: validateCantidadVsUnidadBase.bind(null, editForm.getFieldValue) }
+                ]}
+                dependencies={['idSuministro']}
+              >
                 <InputNumber min={0} step={1} style={{ width:'100%' }} />
               </Form.Item>
             </Col>
@@ -710,7 +949,7 @@ function Suministros() {
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item name="unidadBase" label="Unidad base">
-                <Input placeholder="rollo, bolsa, botella..." />
+                <Input placeholder="rollo, bolsa, botella... o un número (p. ej. 50)" />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -719,11 +958,61 @@ function Suministros() {
               </Form.Item>
             </Col>
           </Row>
-          <Form.Item name="minStock" label="Stock mínimo">
+
+          {/* OCULTO (ESCALABLE) */}
+          <Form.Item name="minStock" label="Stock mínimo" style={{ display:'none' }}>
             <InputNumber min={0} step={1} style={{ width:'100%' }} placeholder="0" />
           </Form.Item>
+
           <Form.Item name="notas" label="Notas">
             <Input.TextArea rows={3} placeholder="Notas opcionales" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* MODAL: EDITAR SUMINISTRO */}
+      <Modal
+        centered
+        title={<Space><icons.EditOutlined /><span>Editar suministro</span></Space>}
+        open={sumEditOpen} visible={sumEditOpen}
+        onCancel={function(){ setSumEditOpen(false); setSumEditRecord(null); }}
+        onOk={function(){ sumEditForm.submit(); }}
+        okText="Guardar" cancelText="Cancelar"
+        confirmLoading={loading}
+        destroyOnClose maskClosable={false} keyboard={false}
+      >
+        <Form form={sumEditForm} layout="vertical" onFinish={onSubmitSuministroEdit}>
+          <Form.Item name="idSuministro" style={{ display:'none' }}><Input /></Form.Item>
+
+          <Form.Item name="nombreSuministro" label="Nombre" rules={[{ required:true, message:'Ingrese el nombre' }]}>
+            <Input />
+          </Form.Item>
+
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="unidadBase" label="Unidad base">
+                <Input placeholder="rollo, bolsa, botella... o un número (p. ej. 50)" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="categoria" label="Categoría">
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          {/* OCULTO (SE MANTIENE PARA ESCALABILIDAD) */}
+          <Form.Item name="minStock" label="Stock mínimo" style={{ display:'none' }}>
+            <InputNumber min={0} step={1} style={{ width:'100%' }} />
+          </Form.Item>
+
+          {/* OCULTO: ESTADO, POR DEFECTO ACTIVO */}
+          <Form.Item name="estado" style={{ display:'none' }}>
+            <Input />
+          </Form.Item>
+
+          <Form.Item name="notas" label="Notas">
+            <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
       </Modal>

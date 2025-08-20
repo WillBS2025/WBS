@@ -345,11 +345,12 @@ function Productos() {
   }
 
   // ===== Columnas =====
+  // CABECERAS MODIFICADAS: 'ID' -> 'No.' Y 'Precio' -> 'Precio Unitario'
   const columns = [
-    { title: 'ID', dataIndex: 'id', key: 'id', width: 70,
+    { title: 'No.', dataIndex: 'id', key: 'id', width: 70,
       sorter: function(a,b){ return String(a.id).localeCompare(String(b.id)); } },
     { title: 'Nombre', dataIndex: 'nombreProducto', key: 'nombreProducto' },
-    { title: 'Precio', dataIndex: 'precio', key: 'precio',
+    { title: 'Precio Unitario', dataIndex: 'precio', key: 'precio',
       render: function (v) { return formatHNL(v); },
       sorter: function (a, b) { return Number(a.precio || 0) - Number(b.precio || 0); },
       align: 'right', width: 120
@@ -542,17 +543,18 @@ function Productos() {
 
       <Divider style={{ margin: '12px 0' }} />
 
+      {/* TABLA CON PAGINACIÓN NATIVA (MANTENIDO) */}
       <Table
-        dataSource={paged}          // usamos sólo lo visible
+        dataSource={filtered}
         columns={columns}
         loading={loading}
-        pagination={false}          // desactivar paginación nativa
+        pagination={{ pageSize: 10 }}
         rowKey={function(r){ return (r && r.id != null) ? r.id : r.key; }}
         scroll={{ x: true }}
       />
 
-      {/* Controles de paginación Load More */}
-      <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', marginTop:12 }}>
+      {/* CONTROLES "LOAD MORE" (LEGADO) OCULTOS PARA EVITAR DOBLE PAGINACIÓN */}
+      <div style={{ display:'none', alignItems:'center', gap:12, flexWrap:'wrap', marginTop:12 }}>
         <span style={{ opacity: .8 }}>
           Mostrando <b>{paged.length}</b> de <b>{total}</b>
         </span>
@@ -615,18 +617,77 @@ function Productos() {
         <Input id="nombreProductoInput" placeholder="Ej. Shampoo" autoComplete="off" />
         </Form.Item>
 
-        <Form.Item label="Precio (L.)" name="precio"
-        rules={[{ required: true, message: 'Ingrese el precio' }]}>
-        <InputNumber min={0} step={0.01} style={{ width: '100%' }} placeholder="Ej. 100.00" />
+        {/* CAMBIO: ETIQUETA Y PLACEHOLDER A "PRECIO UNITARIO" */}
+        <Form.Item
+          label="Precio Unitario (L.)"
+          name="precio"
+          rules={[
+            { required: true, message: 'Ingrese el precio unitario' },
+            {
+              // VALIDACIÓN: SOLO NÚMEROS Y NO NEGATIVO
+              validator: function(_, value) {
+                if (value === undefined || value === null || value === '') return Promise.resolve();
+                if (typeof value !== 'number' || isNaN(value)) return Promise.reject('SOLO NÚMEROS');
+                if (value < 0) return Promise.reject('EL PRECIO NO PUEDE SER NEGATIVO');
+                return Promise.resolve();
+              }
+            }
+          ]}
+        >
+          <InputNumber
+            min={0}
+            step={0.01}
+            precision={2}
+            style={{ width: '100%' }}
+            placeholder="Ej. 100.00 – Precio Unitario"
+          />
         </Form.Item>
 
-        <Form.Item label="Stock" name="stock"
-        rules={[{ required: true, message: 'Ingrese el stock' }]}>
-        <InputNumber min={0} step={1} style={{ width: '100%' }} placeholder="Ej. 10" />
+        <Form.Item
+          label="Stock"
+          name="stock"
+          rules={[
+            { required: true, message: 'Ingrese el stock' },
+            {
+              // VALIDACIÓN: SOLO NÚMEROS, ENTERO Y NO NEGATIVO
+              validator: function(_, value) {
+                if (value === undefined || value === null || value === '') return Promise.resolve();
+                if (typeof value !== 'number' || isNaN(value)) return Promise.reject('SOLO NÚMEROS');
+                if (value < 0) return Promise.reject('EL STOCK NO PUEDE SER NEGATIVO');
+                if (!Number.isInteger(value)) return Promise.reject('EL STOCK DEBE SER UN NÚMERO ENTERO');
+                return Promise.resolve();
+              }
+            }
+          ]}
+        >
+          <InputNumber
+            min={0}
+            step={1}
+            precision={0}  // SOLO ENTEROS
+            style={{ width: '100%' }}
+            placeholder="Ej. 10"
+          />
         </Form.Item>
 
-        <Form.Item label="Fecha de Entrada" name="fechaEntrada">
-        <Input type="date" />
+        <Form.Item
+          label="Fecha de Entrada"
+          name="fechaEntrada"
+          rules={[
+            {
+              // VALIDACIÓN: FECHA NO MAYOR A HOY
+              validator: function(_, value) {
+                if (!value) return Promise.resolve();
+                var d = parseInputDate(value);
+                if (!d) return Promise.reject('FECHA INVÁLIDA');
+                var hoy = new Date();
+                hoy.setHours(23,59,59,999);
+                if (d.getTime() > hoy.getTime()) return Promise.reject('LA FECHA NO PUEDE SER MAYOR A HOY');
+                return Promise.resolve();
+              }
+            }
+          ]}
+        >
+          <Input type="date" />
         </Form.Item>
 
         <Form.Item label="Descripción" name="descripcion">

@@ -353,3 +353,73 @@ function crearSuministro(payloadStr) {
   }
 }
 
+/****************** NUEVO: ACTUALIZAR SUMINISTRO (CATÁLOGO) ******************/
+/* ESTA FUNCIÓN COMPLEMENTA AL FRONT QUE LLAMA google.script.run.actualizarSuministro(...)
+   ENCUENTRA LA FILA POR idSuministro Y ACTUALIZA SOLO LAS COLUMNAS EXISTENTES:
+   idSuministro | nombreSuministro | unidadBase | categoria | minStock | estado | notas
+   DEVUELVE: { ok:true } O { ok:false, message } */
+function actualizarSuministro(payloadStr) {
+  try {
+    // ===== PARSEO DE ENTRADA =====
+    var p = (typeof payloadStr === 'string') ? JSON.parse(payloadStr) : payloadStr;
+    if (!p || p.idSuministro == null || String(p.idSuministro).trim() === '') {
+      return JSON.stringify({ ok:false, message:'idSuministro requerido' });
+    }
+
+    // ===== OBTENER HOJA Y DATOS =====
+    var sh = getSheet_(SHEET_SUMINISTROS);
+    var values = sh.getDataRange().getValues();
+    if (!values || values.length < 2) {
+      return JSON.stringify({ ok:false, message:'No hay datos en la hoja' });
+    }
+
+    // ===== MAPEO DE ENCABEZADOS (EXACTOS SEGÚN TU HOJA) =====
+    var headers = values[0].map(function(x){ return String(x); });
+    var iId     = headersIndex_(headers, 'idSuministro');
+    var iNombre = headersIndex_(headers, 'nombreSuministro');
+    var iUni    = headersIndex_(headers, 'unidadBase');
+    var iCat    = headersIndex_(headers, 'categoria');
+    var iMin    = headersIndex_(headers, 'minStock');
+    var iEst    = headersIndex_(headers, 'estado');
+    var iNotas  = headersIndex_(headers, 'notas');
+
+    if (iId < 0) return JSON.stringify({ ok:false, message:'No se encontró la columna "idSuministro"' });
+
+    // ===== BUSCAR FILA POR ID =====
+    var searchId = String(p.idSuministro).trim();
+    var targetRow = -1; // ÍNDICE 0-BASED EN "values"
+    for (var r = 1; r < values.length; r++) {
+      if (String(values[r][iId]).trim() === searchId) { targetRow = r; break; }
+    }
+    if (targetRow < 0) return JSON.stringify({ ok:false, message:'No existe el idSuministro: ' + searchId });
+
+    // ===== PREPARAR NUEVOS VALORES SIN ROMPER OTRAS COLUMNAS =====
+    var rowArr = values[targetRow].slice(); // COPIA DE LA FILA
+    if (iNombre >= 0 && p.hasOwnProperty('nombreSuministro')) rowArr[iNombre] = p.nombreSuministro;
+    if (iUni    >= 0 && p.hasOwnProperty('unidadBase'))       rowArr[iUni]    = p.unidadBase;
+    if (iCat    >= 0 && p.hasOwnProperty('categoria'))        rowArr[iCat]    = p.categoria;
+
+    if (iMin >= 0 && p.hasOwnProperty('minStock')) {
+      var n = Number(p.minStock);
+      rowArr[iMin] = isFinite(n) ? n : rowArr[iMin]; // SOLO SI ES NÚMERO VÁLIDO
+    }
+
+    if (iEst   >= 0 && p.hasOwnProperty('estado')) rowArr[iEst]   = p.estado;
+    if (iNotas >= 0 && p.hasOwnProperty('notas'))  rowArr[iNotas] = p.notas;
+
+    // ===== ESCRIBIR LA FILA COMPLETA (UNA SOLA OPERACIÓN) =====
+    sh.getRange(targetRow + 1, 1, 1, values[0].length).setValues([rowArr]);
+
+    // ===== OPCIONAL: TIMESTAMP SI EXISTE COLUMNA "actualizadoEn" O "updatedAt" =====
+    var iUpd = headersIndex_(headers, 'actualizadoEn');
+    if (iUpd < 0) iUpd = headersIndex_(headers, 'updatedAt');
+    if (iUpd >= 0) {
+      sh.getRange(targetRow + 1, iUpd + 1).setValue(new Date());
+    }
+
+    return JSON.stringify({ ok:true });
+  } catch (e) {
+    // *** ERRORES CLAROS PARA EL FRONT ***
+    return JSON.stringify({ ok:false, message:'Error en actualizarSuministro: ' + (e && e.message ? e.message : String(e)) });
+  }
+}
