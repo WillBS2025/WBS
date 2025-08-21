@@ -20,5 +20,8 @@ function env_(){
 
             // HOJA SUCURSALES
             SH_SUCURSALES: "sucursales",
+
+            // HOJA GASTOS
+            SH_GASTOS: "Gastos"
     };
 }

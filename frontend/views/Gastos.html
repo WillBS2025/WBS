@@ -1,10 +1,473 @@
 //<script type="text/jsx">
 function Gastos() {
+  // ===========================
+  // IMPORTS DE ANT DESIGN
+  // ===========================
+  const { useState, useEffect } = React;
+  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, Row, Col, Tag, message } = antd;
+
+  // ===========================
+  // ESTADOS
+  // ===========================
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // SUCURSALES (PARA SELECT)
+  const [sucursales, setSucursales] = useState([]);
+
+  // MODAL + FORMULARIO
+  const [form] = Form.useForm();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState('create'); // 'create' | 'edit'
+  const [editing, setEditing] = useState(null);
+
+  // FILTROS
+  const today = new Date();
+  const defaultMonth = String(today.getFullYear()) + '-' + String(today.getMonth()+1).padStart(2,'0'); // yyyy-mm
+  const [mesYear, setMesYear] = useState(defaultMonth);
+  const [fCategoria, setFCategoria] = useState(undefined);
+  const [fSucursal, setFSucursal] = useState(undefined);
+  const [q, setQ] = useState('');
+
+  // CATEGORÍAS Y MÉTODOS DE PAGO
+  const CATEGORIAS = ['Luz','Agua','Internet','Salarios','Alquiler','Insumos','Limpieza','Mantenimiento','Publicidad','Impuestos','Servicios Profesionales','Otros'];
+  const METODOS = ['Efectivo','Tarjeta','Transferencia','Cheque','Otro'];
+
+  // ===========================
+  // HELPERS
+  // ===========================
+  function formatHNL(value) {
+    // FORMATEO DE MONTO EN LEMPIRAS
+    var n = Number(value);
+    if (!isFinite(n)) n = 0;
+    try {
+      return new Intl.NumberFormat('es-HN', { style: 'currency', currency: 'HNL', maximumFractionDigits: 2 }).format(n);
+    } catch(_) {
+      return 'L. ' + (Math.round(n * 100) / 100).toFixed(2);
+    }
+  }
+  function toInputDate(d){
+    // CONVIERTE DATE -> 'yyyy-mm-dd'
+    if (!d) return '';
+    var y = d.getFullYear();
+    var m = String(d.getMonth()+1).padStart(2,'0');
+    var day = String(d.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + day;
+  }
+  function parseInputDate(s){
+    // 'yyyy-mm-dd' -> Date
+    if (!s) return null;
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+  }
+
+  // ===========================
+  // CARGA DE DATOS
+  // ===========================
+  function cargar() {
+    setLoading(true);
+    // PARSEA yyyy-mm A ENTEROS
+    var m = 0, y = 0;
+    if (mesYear && /^\d{4}-\d{2}$/.test(mesYear)) {
+      y = Number(mesYear.slice(0,4));
+      m = Number(mesYear.slice(5,7));
+    }
+    var filtros = { mes: m, anio: y };
+    if (fCategoria) filtros.categoria = fCategoria;
+    if (fSucursal) filtros.nombreSucursal = fSucursal;
+    if (q && q.trim()) filtros.q = q.trim();
+
+    google.script.run
+      .withSuccessHandler(function(res){
+        setLoading(false);
+        try{
+          var arr = JSON.parse(res) || [];
+          var normalized = arr.map(function(r,i){
+            // CONVIERTE FECHAS A Date EN EL CLIENTE (SI VIENEN COMO STRING)
+            var d = r && r.fecha;
+            if (d && typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d)) {
+              try { r.fecha = new Date(d); } catch(_){}
+            }
+            return Object.assign({}, r, { key: (r && r.id != null ? r.id : i) });
+          });
+          setData(normalized);
+        }catch(e){
+          Modal.error({ title: 'ERROR', content: 'RESPUESTA INVÁLIDA DEL SERVIDOR' });
+        }
+      })
+      .withFailureHandler(function(err){
+        setLoading(false);
+        Modal.error({ title: 'ERROR DE SERVIDOR', content: String((err && err.message) || err) });
+      })
+      .listarGastos(JSON.stringify(filtros));
+  }
+
+  function cargarSucursales(){
+    google.script.run
+      .withSuccessHandler(function(res){
+        try{
+          var r = typeof res === 'string' ? JSON.parse(res) : res;
+          if (r && r.ok && r.sucursales) setSucursales(r.sucursales);
+          else setSucursales([]);
+        }catch(_){ setSucursales([]); }
+      })
+      .withFailureHandler(function(){ setSucursales([]); })
+      .listarSucursalesActivas();
+  }
+
+  // CARGA INICIAL
+  useEffect(function(){
+    cargar();
+    cargarSucursales();
+  }, []);
+
+  // APLICAR FILTROS AUTOMÁTICAMENTE CUANDO CAMBIAN MES/CATEGORÍA/SUCURSAL
+  useEffect(function(){
+    cargar();
+  }, [mesYear, fCategoria, fSucursal]);
+
+  // ===========================
+  // MODAL NUEVO / EDITAR
+  // ===========================
+  function abrirNuevo(){
+    setModalMode('create');
+    setEditing(null);
+    form.resetFields();
+    form.setFieldsValue({
+      fecha: toInputDate(new Date()),
+      categoria: undefined,
+      descripcion: '',
+      monto: 0,
+      metodoPago: undefined,
+      proveedor: '',
+      nombreSucursal: undefined
+      // COMPROBANTEURL OCULTO: NO INICIALIZAR
+    });
+    setModalOpen(true);
+  }
+
+  function abrirEditar(record){
+    setModalMode('edit');
+    setEditing(record || null);
+    form.resetFields();
+    form.setFieldsValue({
+      id: record.id,
+      fecha: toInputDate(record.fecha ? new Date(record.fecha) : new Date()),
+      categoria: record.categoria || undefined,
+      descripcion: record.descripcion || '',
+      monto: Number(record.monto || 0),
+      metodoPago: record.metodoPago || undefined,
+      proveedor: record.proveedor || '',
+      nombreSucursal: record.nombreSucursal || undefined
+      // COMPROBANTEURL OCULTO: NO MOSTRAR NI EDITAR
+    });
+    setModalOpen(true);
+  }
+
+  function onSubmit(){
+    form.validateFields().then(function(values){
+      setLoading(true);
+      var payload = {
+        // SOLO CAMPOS VISIBLES — NO ENVIAR comprobanteURL
+        fecha: parseInputDate(values.fecha),
+        categoria: values.categoria || '',
+        descripcion: values.descripcion || '',
+        monto: Number(values.monto || 0),
+        metodoPago: values.metodoPago || '',
+        proveedor: values.proveedor || '',
+        nombreSucursal: values.nombreSucursal || ''
+      };
+
+      if (modalMode === 'create') {
+        google.script.run
+          .withSuccessHandler(function(res){
+            setLoading(false);
+            try{
+              var r = typeof res === 'string' ? JSON.parse(res) : res;
+              if (r && r.ok){
+                message.success('Gasto creado');
+                setModalOpen(false);
+                cargar();
+              }else{
+                Modal.error({ title:'NO SE PUDO CREAR', content: (r && r.message) || 'Error desconocido' });
+              }
+            }catch(_){
+              Modal.error({ title:'ERROR', content:'RESPUESTA INVÁLIDA DEL SERVIDOR' });
+            }
+          })
+          .withFailureHandler(function(err){
+            setLoading(false);
+            Modal.error({ title:'ERROR DE SERVIDOR', content: String((err && err.message) || err) });
+          })
+          .crearGasto(JSON.stringify(payload));
+      } else {
+        payload.id = editing && editing.id;
+        google.script.run
+          .withSuccessHandler(function(res){
+            setLoading(false);
+            try{
+              var r = typeof res === 'string' ? JSON.parse(res) : res;
+              if (r && r.ok){
+                message.success('Gasto actualizado');
+                setModalOpen(false);
+                cargar();
+              }else{
+                Modal.error({ title:'NO SE PUDO ACTUALIZAR', content: (r && r.message) || 'Error desconocido' });
+              }
+            }catch(_){
+              Modal.error({ title:'ERROR', content:'RESPUESTA INVÁLIDA DEL SERVIDOR' });
+            }
+          })
+          .withFailureHandler(function(err){
+            setLoading(false);
+            Modal.error({ title:'ERROR DE SERVIDOR', content: String((err && err.message) || err) });
+          })
+          .actualizarGasto(JSON.stringify(payload));
+      }
+    });
+  }
+
+  function eliminar(record){
+    Modal.confirm({
+      title: '¿Eliminar gasto?',
+      content: 'Esta acción no se puede deshacer.',
+      okText: 'Eliminar',
+      okType: 'danger',
+      cancelText: 'Cancelar',
+      onOk: function(){
+        setLoading(true);
+        google.script.run
+          .withSuccessHandler(function(res){
+            setLoading(false);
+            try{
+              var r = typeof res === 'string' ? JSON.parse(res) : res;
+              if (r && r.ok){
+                message.success('Gasto eliminado');
+                cargar();
+              }else{
+                Modal.error({ title:'NO SE PUDO ELIMINAR', content: (r && r.message) || 'Error desconocido' });
+              }
+            }catch(_){
+              Modal.error({ title:'ERROR', content:'RESPUESTA INVÁLIDA DEL SERVIDOR' });
+            }
+          })
+          .withFailureHandler(function(err){
+            setLoading(false);
+            Modal.error({ title:'ERROR DE SERVIDOR', content: String((err && err.message) || err) });
+          })
+          .eliminarGasto(String(record.id));
+      }
+    });
+  }
+
+  // BOTÓN LIMPIAR FILTROS (AL ESTILO PRODUCTOS)
+  function limpiarFiltros(){
+    setMesYear(defaultMonth);
+    setFCategoria(undefined);
+    setFSucursal(undefined);
+    setQ('');
+    // DISPARAR CARGA TRAS RESETEO
+    setTimeout(cargar, 0);
+  }
+
+  // ===========================
+  // DERIVADOS / KPIS
+  // ===========================
+  var total = (data || []).reduce(function(acc, r){ return acc + Number(r.monto || 0); }, 0);
+
+  // ===========================
+  // COLUMNAS TABLA
+  // ===========================
+  const columns = [
+    { title: 'Fecha', dataIndex: 'fecha', key: 'fecha',
+      render: function(v){
+        try{
+          var d = (v && typeof v === 'string') ? new Date(v) : v;
+        var y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+          return dd + '/' + m + '/' + y;
+        }catch(_){ return ''; }
+      }
+    },
+    { title: 'Categoría', dataIndex: 'categoria', key: 'categoria',
+      render: function(v){ return <Tag color="blue">{v || '-'}</Tag>; }
+    },
+    { title: 'Descripción', dataIndex: 'descripcion', key: 'descripcion' },
+    { title: 'Monto (L.)', dataIndex: 'monto', key: 'monto',
+      align: 'right',
+      render: function(v){ return <b>{formatHNL(v)}</b>; }
+    },
+    { title: 'Método', dataIndex: 'metodoPago', key: 'metodoPago' },
+    { title: 'Proveedor', dataIndex: 'proveedor', key: 'proveedor' },
+    { title: 'Sucursal', dataIndex: 'nombreSucursal', key: 'nombreSucursal' },
+
+    // COLUMNA DE COMPROBANTE OCULTA POR SOLICITUD:
+    // { title: 'Comprobante', dataIndex: 'comprobanteURL', key: 'comprobanteURL',
+    //   render: function(v){
+    //     if (!v) return null;
+    //     return <a href={v} target="_blank" rel="noreferrer">Abrir</a>;
+    //   }
+    // },
+
+    { title: 'Acciones', key: 'acciones',
+      render: function(_,record){
+        return (
+          <Space>
+            <Button size="small" onClick={()=>abrirEditar(record)} icon={<icons.EditOutlined />}>Editar</Button>
+            <Button size="small" danger onClick={()=>eliminar(record)} icon={<icons.DeleteOutlined />}>Eliminar</Button>
+          </Space>
+        );
+      }
+    }
+  ];
+
+  // ===========================
+  // UI
+  // ===========================
   return (
-    <div>
-      <h2>Gastos</h2>
-      <p>Aquí podrás registrar y consultar gastos. (Pendiente de implementar)</p>
-    </div>
+    <Card
+      title="Gastos"
+      extra={
+        <Space>
+          <Button onClick={cargar} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
+          <Button onClick={limpiarFiltros}>Limpiar filtros</Button>
+          <Button type="primary" onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Nuevo</Button>
+        </Space>
+      }
+    >
+      {/* FILTROS */}
+      <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
+        <Col xs={24} md={6}>
+          <label className="block text-xs text-gray-500 mb-1">Mes</label>
+          <input
+            type="month"
+            className="w-full border rounded px-2 py-1"
+            value={mesYear}
+            onChange={e=>setMesYear(e.target.value)}
+          />
+        </Col>
+        <Col xs={24} md={6}>
+          <label className="block text-xs text-gray-500 mb-1">Categoría</label>
+          <Select allowClear placeholder="Todas"
+            className="w-full"
+            value={fCategoria}
+            onChange={setFCategoria}
+            options={CATEGORIAS.map(function(c){ return { value:c, label:c }; })}
+          />
+        </Col>
+        <Col xs={24} md={6}>
+          <label className="block text-xs text-gray-500 mb-1">Sucursal</label>
+          <Select allowClear placeholder="Todas"
+            className="w-full"
+            value={fSucursal}
+            onChange={setFSucursal}
+            options={(sucursales||[]).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })}
+          />
+        </Col>
+        <Col xs={24} md={6}>
+          <label className="block text-xs text-gray-500 mb-1">Buscar</label>
+          {/* INPUT.SEARCH PARA DISPARAR BÚSQUEDA MANUAL */}
+          <Input.Search
+            placeholder="Texto libre..."
+            value={q}
+            onChange={e=>setQ(e.target.value)}
+            onSearch={cargar}
+            allowClear
+          />
+        </Col>
+      </Row>
+
+      <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
+        <Col xs={24} md={8}>
+          <div className="p-3 bg-gray-50 rounded border">
+            <div className="text-gray-500 text-xs">Total del período</div>
+            <div className="text-2xl font-bold">{formatHNL(total)}</div>
+          </div>
+        </Col>
+      </Row>
+
+      <Table
+        dataSource={data}
+        columns={columns}
+        loading={loading}
+        pagination={{ pageSize: 10 }}
+        rowKey="id"
+      />
+
+      {/* MODAL CREAR / EDITAR */}
+      <Modal
+        visible={modalOpen}
+        title={modalMode === 'create' ? 'Nuevo gasto' : 'Editar gasto'}
+        onCancel={()=>setModalOpen(false)}
+        onOk={onSubmit}
+        okText={modalMode === 'create' ? 'Guardar' : 'Actualizar'}
+        confirmLoading={loading}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item name="fecha" label="Fecha" rules={[{ required:true, message:'LA FECHA ES OBLIGATORIA' }]}>
+            <input type="date" className="w-full border rounded px-2 py-1" />
+          </Form.Item>
+
+          <Form.Item name="categoria" label="Categoría" rules={[{ required:true, message:'SELECCIONE UNA CATEGORÍA' }]}>
+            <Select
+              showSearch
+              placeholder="Seleccione"
+              options={CATEGORIAS.map(function(c){ return { value:c, label:c }; })}
+            />
+          </Form.Item>
+
+          <Form.Item name="descripcion" label="Descripción" rules={[{ required:true, message:'INGRESE UNA DESCRIPCIÓN' }]}>
+            <Input.TextArea rows={3} placeholder="Detalle del gasto" />
+          </Form.Item>
+
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="monto" label="Monto (L.)" rules={[
+                { required:true, message:'INGRESE UN MONTO' },
+                { validator:(_,v)=> (v==null || Number(v) <= 0) ? Promise.reject('EL MONTO DEBE SER MAYOR QUE 0') : Promise.resolve() }
+              ]}>
+                <InputNumber className="w-full" min={0} step={0.01} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="metodoPago" label="Método de pago" rules={[{ required:true, message:'SELECCIONE MÉTODO DE PAGO' }]}>
+                <Select placeholder="Seleccione" options={METODOS.map(function(m){ return { value:m, label:m }; })} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="proveedor" label="Proveedor">
+                <Input placeholder="Opcional" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              {/* SUCURSAL OBLIGATORIA EN MODALES */}
+              <Form.Item
+                name="nombreSucursal"
+                label="Sucursal"
+                rules={[{ required:true, message:'SELECCIONE UNA SUCURSAL' }]}
+              >
+                <Select
+                  allowClear
+                  showSearch
+                  placeholder="Seleccione"
+                  options={(sucursales||[]).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          {/* URL COMPROBANTE OCULTO POR SOLICITUD
+          <Form.Item name="comprobanteURL" label="URL Comprobante">
+            <Input placeholder="https://..." />
+          </Form.Item>
+          */}
+        </Form>
+      </Modal>
+    </Card>
   );
 }
 //</script>
