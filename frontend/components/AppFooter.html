@@ -1,0 +1,32 @@
+<style>
+  /* =============== APP FOOTER (MINIMAL, CENTRADO) =============== */
+  .wbs-footer-min {
+    background: transparent;
+    padding: 10px 0 22px;           /* espacio inferior */
+  }
+  .wbs-footer-min__inner {
+    max-width: 1120px;              /* MISMO ANCHO QUE EL CONTENIDO */
+    margin: 0 auto;
+    padding: 0 16px;                /* mismo padding lateral que el contenido */
+  }
+  .wbs-footer-min__text {
+    text-align: center;
+    font-size: 13.5px;
+    color: #475569;                 /* slate-600 */
+    line-height: 1.6;
+  }
+</style>
+
+<script type="text/jsx">
+  function AppFooter({ brand="SomniumIA", year=(new Date()).getFullYear() }){
+    return (
+      <div className="wbs-footer-min" role="contentinfo">
+        <div className="wbs-footer-min__inner">
+          <div className="wbs-footer-min__text">
+            © {year} {brand}. Todos los derechos reservados.
+          </div>
+        </div>
+      </div>
+    );
+  }
+</script>

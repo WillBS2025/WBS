@@ -6,17 +6,53 @@ function Login({ onLogin }) {
 
   const onFinish = (values) => {
     setLoading(true);
+
     google.script.run
       .withSuccessHandler((resp) => {
         setLoading(false);
-        if (resp.success) {
-          message.success(resp.message);
-          try { localStorage.setItem('userRole', resp.role || (resp.user && resp.user.rol) || 'admin'); localStorage.setItem('userInfo', JSON.stringify(resp.user || {})); } catch (_) {}
+
+        if (resp && resp.success) {
+          // MENSAJE DE ÉXITO DEL BACKEND (SI LO ENVÍA)
+          if (resp.message) message.success(resp.message);
+
+          // ===== CONSTRUIR PERFIL DE USUARIO CON FALLBACKS SEGUROS =====
+          // NOTA: TOMAMOS NOMBRE/EMAIL DEL BACKEND SI EXISTEN,
+          // Y SI NO, USAMOS EL CORREO DEL FORMULARIO (ANTES DEL @) COMO NOMBRE.
+          const raw = resp.user || {};
+          const email =
+            raw.email || raw.correo || raw.username || values.correo || "";
+          const baseName =
+            raw.nombre ||
+            raw.name ||
+            raw.fullName ||
+            raw.displayName ||
+            (email ? String(email).split("@")[0] : "Usuario");
+
+          const user = {
+            name: String(baseName).trim() || "Usuario",
+            email: String(email).trim() || "",
+            // PUEDES GUARDAR CAMPOS EXTRA DEL BACKEND SI LOS TRAES:
+            // id: raw.id, telefono: raw.telefono, etc.
+          };
+
+          // ===== PERSISTIR EN LOCALSTORAGE: userInfo + userRole =====
+          try {
+            localStorage.setItem("userInfo", JSON.stringify(user));
+            localStorage.setItem(
+              "userRole",
+              resp.role || raw.rol || "admin"
+            );
+          } catch (_) {}
+
+          // OPCIONAL: SALUDO
+          // message.success(`¡Bienvenido, ${user.name}!`);
+
+          // AVISAR AL ROUTER QUE EL LOGIN FUE EXITOSO
           onLogin(true);
         } else {
           Modal.error({
-            title: 'Error de autenticación',
-            content: resp.message,
+            title: "Error de autenticación",
+            content: (resp && resp.message) || "Credenciales inválidas",
           });
           onLogin(false);
         }
@@ -24,8 +60,9 @@ function Login({ onLogin }) {
       .withFailureHandler((error) => {
         setLoading(false);
         Modal.error({
-          title: 'Error de comunicación',
-          content: 'Ha ocurrido un error al intentar iniciar sesión. Por favor, inténtalo de nuevo más tarde.',
+          title: "Error de comunicación",
+          content:
+            "Ha ocurrido un error al intentar iniciar sesión. Por favor, inténtalo de nuevo más tarde.",
         });
         console.error("Error al llamar a Apps Script:", error);
       })
@@ -34,7 +71,8 @@ function Login({ onLogin }) {
 
   // Estilo de texto con “oro viejo” en degradado, sin CSS externo
   const goldText = {
-    backgroundImage: "linear-gradient(135deg,#bfa46f 0%, #a3874a 35%, #bfa46f 70%, #8f7a45 100%)",
+    backgroundImage:
+      "linear-gradient(135deg,#bfa46f 0%, #a3874a 35%, #bfa46f 70%, #8f7a45 100%)",
     WebkitBackgroundClip: "text",
     backgroundClip: "text",
     color: "transparent",
@@ -59,13 +97,12 @@ function Login({ onLogin }) {
           title={
             <div className="flex flex-col items-center space-y-3 select-none">
               <div className="w-20 h-20 flex items-center justify-center rounded-full border-2 border-[#bfa46f] shadow-md bg-[#111]">
-                    <span className="text-3xl font-extrabold tracking-wide text-[#bfa46f]">WB</span>
+                <span className="text-3xl font-extrabold tracking-wide text-[#bfa46f]">
+                  WB
+                </span>
               </div>
               {/* Nombre con degradado dorado opaco */}
-              <h1
-                className="text-2xl font-extrabold tracking-wide"
-                style={goldText}
-              >
+              <h1 className="text-2xl font-extrabold tracking-wide" style={goldText}>
                 Wilito BarberShop
               </h1>
 
@@ -85,19 +122,13 @@ function Login({ onLogin }) {
             </div>
           }
         >
-          <Form
-            form={form}
-            name="login"
-            initialValues={{ remember: true }}
-            onFinish={onFinish}
-            layout="vertical"
-          >
+          <Form form={form} name="login" initialValues={{ remember: true }} onFinish={onFinish} layout="vertical">
             <Item
               label={<span style={{ color: "#bfa46f", fontWeight: "600" }}>Correo</span>}
               name="correo"
               rules={[
-                { required: true, message: '¡Por favor ingresa tu correo!' },
-                { type: 'email', message: '¡El formato del correo no es válido!' },
+                { required: true, message: "¡Por favor ingresa tu correo!" },
+                { type: "email", message: "¡El formato del correo no es válido!" },
               ]}
             >
               <Input
@@ -111,7 +142,7 @@ function Login({ onLogin }) {
             <Item
               label={<span style={{ color: "#bfa46f", fontWeight: "600" }}>Contraseña</span>}
               name="contrasenia"
-              rules={[{ required: true, message: '¡Por favor ingresa tu contraseña!' }]}
+              rules={[{ required: true, message: "¡Por favor ingresa tu contraseña!" }]}
             >
               <Input.Password
                 size="large"
