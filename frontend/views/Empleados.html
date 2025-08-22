@@ -1,12 +1,185 @@
-//<script type="text/jsx">
-
+// <script type="text/jsx">
 function Empleados() {
-    return (
-        <div>
-          <h2>Sección de Empleados</h2>
-          <p>Aquí puedes gestionar la información de los empleados.</p>
-        </div>
-    );
-}
+  const { useState, useEffect } = React;
+  const { Table, Card, Button, Modal, Form, Input, Select, DatePicker, Space, Row, Col, InputNumber, Tag, message } = antd;
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [sucursales, setSucursales] = useState([]);
+  const [filters, setFilters] = useState({ nombre_empleado: '', nombreSucursal: '', estado: '' });
 
-//</script>
+  const [form] = Form.useForm();
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState('create');
+  const [toDelete, setToDelete] = useState(null);
+  const [openDelete, setOpenDelete] = useState(false);
+
+  function cargar(){
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(res => {
+        try{
+          let arr = (typeof res==='string')? JSON.parse(res):res;
+          if (!Array.isArray(arr)) arr = [];
+          // compute antigüedad a nivel front
+          const today = new Date();
+          const withAge = arr.map((r,i) => {
+            const fc = r.fecha_contratacion ? new Date(r.fecha_contratacion) : null;
+            let antig = '';
+            if (fc && !isNaN(fc)) {
+              const diff = (today - fc) / (1000*60*60*24*365.25);
+              const years = Math.floor(diff);
+              const months = Math.floor((diff - years) * 12);
+              antig = `${years}a ${months}m`;
+            }
+            return { key: r.id || r.id_empleado || i, ...r, antiguedad: antig };
+          });
+          setData(withAge);
+        }catch(e){
+          Modal.error({title:'Error', content:'No se pudo interpretar la respuesta del servidor.'});
+        } finally { setLoading(false); }
+      })
+      .withFailureHandler(err => { setLoading(false); Modal.error({title:'Error', content:String((err&&err.message)||err)}); })
+      .listarEmpleados();
+  }
+
+  function cargarSucursales(){
+    google.script.run
+      .withSuccessHandler(res => {
+        try{
+          const r = (typeof res==='string')? JSON.parse(res):res;
+          setSucursales((r && r.sucursales) || []);
+        }catch(_){ setSucursales([]); }
+      })
+      .withFailureHandler(() => setSucursales([]))
+      .listarSucursalesActivas();
+  }
+
+  useEffect(()=>{ cargar(); cargarSucursales(); }, []);
+
+  function abrirNuevo(){ setMode('create'); form.resetFields(); setOpen(true); }
+  function abrirEditar(rec){
+    setMode('edit');
+    var df='YYYY-MM-DD'; form.setFieldsValue({
+      id_empleado: rec.id_empleado,
+      nombre_empleado: rec.nombre_empleado || '',
+      fecha_nacimiento: (rec.fecha_nacimiento? moment(rec.fecha_nacimiento, df): null),
+      fecha_contratacion: (rec.fecha_contratacion? moment(rec.fecha_contratacion, df): null),
+      genero: rec.genero || '',
+      telefono: rec.telefono || '',
+      nombreSucursal: rec.nombreSucursal || '',
+      estado: rec.estado || 'Activo'
+    });
+    setOpen(true);
+  }
+  function abrirEliminar(rec){ setToDelete(rec); setOpenDelete(true); }
+
+  function onSubmit(){
+    form.validateFields().then(values => {
+      setLoading(true);
+      const runner = (mode==='create') ? 'crearEmpleado' : 'actualizarEmpleado';
+      try{
+        if (values.fecha_nacimiento && values.fecha_nacimiento.format) values.fecha_nacimiento = values.fecha_nacimiento.format('YYYY-MM-DD');
+        if (values.fecha_contratacion && values.fecha_contratacion.format) values.fecha_contratacion = values.fecha_contratacion.format('YYYY-MM-DD');
+      }catch(_){}
+
+      google.script.run
+        .withSuccessHandler(res => {
+          setLoading(false);
+          try{
+            const r = (typeof res==='string')? JSON.parse(res):res;
+            if (r && (r.ok || r.titulo)) { message.success(mode==='create'?'Empleado creado':'Empleado actualizado'); setOpen(false); cargar(); }
+            else Modal.error({title:'Error', content:(r&&r.message)||'Operación fallida'});
+          }catch(_){ Modal.error({title:'Error', content:'Respuesta inválida'}); }
+        })
+        .withFailureHandler(err => { setLoading(false); Modal.error({title:'Error', content:String((err&&err.message)||err)}); })
+        [runner](JSON.stringify(values));
+    });
+  }
+
+  function confirmarEliminar(){
+    if (!toDelete) return;
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(res => {
+        setLoading(false);
+        try{
+          const r = (typeof res==='string')? JSON.parse(res):res;
+          if (r && (r.ok || r.titulo)) { message.success('Empleado eliminado'); setOpenDelete(false); setToDelete(null); cargar(); }
+          else Modal.error({title:'Error', content:(r&&r.message)||'No se pudo eliminar'});
+        }catch(_){ Modal.error({title:'Error', content:'Respuesta inválida'}); }
+      })
+      .withFailureHandler(err => { setLoading(false); Modal.error({title:'Error', content:String((err&&err.message)||err)}); })
+      .eliminarEmpleado(toDelete.id_empleado);
+  }
+
+  const filtered = data.filter(r => {
+    const byNombre = !filters.nombre_empleado || (String(r.nombre_empleado||'').toLowerCase().includes(filters.nombre_empleado.toLowerCase()));
+    const bySuc = !filters.nombreSucursal || String(r.nombreSucursal||'') === filters.nombreSucursal;
+    const byEstado = !filters.estado || String(r.estado||'') === filters.estado;
+    return byNombre && bySuc && byEstado;
+  });
+
+  const columns = [
+    { title:'Empleado', dataIndex:'nombre_empleado', key:'nombre_empleado', width:220, render:v=><b>{v||''}</b> },
+    { title:'Sucursal', dataIndex:'nombreSucursal', key:'nombreSucursal', width:220 },
+    { title:'Género', dataIndex:'genero', key:'genero', width:100 },
+    { title:'Teléfono', dataIndex:'telefono', key:'telefono', width:130 },
+    { title:'F. Nacimiento', dataIndex:'fecha_nacimiento', key:'fecha_nacimiento', width:130 },
+    { title:'F. Contratación', dataIndex:'fecha_contratacion', key:'fecha_contratacion', width:150 },
+    { title:'Antigüedad', dataIndex:'antiguedad', key:'antiguedad', width:110 },
+    { title:'Estado', dataIndex:'estado', key:'estado', width:110, render:s=>(<span className="ant-tag" style={{background:'#f6ffed',borderColor:'#b7eb8f',color:'#389e0d'}}>{s||''}</span>) },
+    { title:'', key:'acc', width:92, align:'center', render:(_,rec)=>(<Space direction="vertical" size={4}>
+        <Button size="small" onClick={()=>abrirEditar(rec)} icon={<icons.EditOutlined />}>Editar</Button>
+        <Button size="small" type="text" danger onClick={()=>abrirEliminar(rec)} icon={<icons.DeleteOutlined />}>Eliminar</Button>
+      </Space>)
+    }
+  ];
+
+  return (
+    <Card title="Empleados" extra={(
+      <Space>
+        <Input placeholder="Buscar por nombre..." allowClear style={{width:240}} value={filters.nombre_empleado}
+               onChange={e=>setFilters({...filters, nombre_empleado:e.target.value})} />
+        <Select placeholder="Sucursal" allowClear style={{width:200}} value={filters.nombreSucursal}
+                options={(sucursales||[]).map(s=>({value:s.nombreSucursal, label:s.nombreSucursal}))}
+                onChange={v=>setFilters({...filters, nombreSucursal:v||''})} />
+        <Select placeholder="Estado" allowClear style={{width:150}} value={filters.estado}
+                options={[{value:'Activo',label:'Activo'},{value:'Inactivo',label:'Inactivo'}]}
+                onChange={v=>setFilters({...filters, estado:v||''})} />
+        <Button icon={<icons.ReloadOutlined />} onClick={cargar}>Refrescar</Button>
+        <Button type="primary" icon={<icons.PlusOutlined />} onClick={abrirNuevo}>Nuevo</Button>
+      </Space>
+    )}>
+      <Table dataSource={filtered} columns={columns} loading={loading} pagination={{ pageSize: 8 }} />
+
+      <Modal visible={open} onCancel={()=>setOpen(false)} onOk={onSubmit}
+             title={mode==='create'?'Nuevo Empleado':'Editar Empleado'} okText={mode==='create'?'Crear':'Guardar'} confirmLoading={loading}>
+        <Form form={form} layout="vertical">
+          <Form.Item name="id_empleado" hidden><Input /></Form.Item>
+          <Form.Item name="nombre_empleado" label="Nombre" rules={[{required:true,message:'Ingrese el nombre'}]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="fecha_nacimiento" label="Fecha de nacimiento"><DatePicker style={{width:"100%"}} format="YYYY-MM-DD" /></Form.Item>
+          <Form.Item name="fecha_contratacion" label="Fecha de contratación" rules={[{required:true,message:"Ingrese la fecha de contratación"}]}>
+            <DatePicker style={{width:"100%"}} format="YYYY-MM-DD" />
+          </Form.Item>
+          <Form.Item name="genero" label="Género">
+            <Select options={[{value:'Masculino',label:'Masculino'},{value:'Femenino',label:'Femenino'}]} allowClear />
+          </Form.Item>
+          <Form.Item name="telefono" label="Teléfono"><Input /></Form.Item>
+          <Form.Item name="nombreSucursal" label="Sucursal" rules={[{required:true,message:'Seleccione la sucursal'}]}>
+            <Select options={(sucursales||[]).map(s=>({value:s.nombreSucursal,label:s.nombreSucursal}))} />
+          </Form.Item>
+          <Form.Item name="estado" label="Estado" initialValue="Activo">
+            <Select options={[{value:'Activo',label:'Activo'},{value:'Inactivo',label:'Inactivo'}]} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal visible={openDelete} onCancel={()=>{setOpenDelete(false);setToDelete(null);}} okType="danger" okText="Eliminar" onOk={confirmarEliminar}>
+        <p>¿Eliminar al empleado <b>{toDelete?toDelete.nombre_empleado:''}</b>?</p>
+      </Modal>
+    </Card>
+  );
+}
+// </script>

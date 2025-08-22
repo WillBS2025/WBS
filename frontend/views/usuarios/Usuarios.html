@@ -1,66 +1,263 @@
-//<script type="text/jsx">
 
+<div id="UsuariosView"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+const { Table, Button, Modal, Form, Input, Select, Space, message, Typography } = antd;
+const icons = (window.icons || window.iconsAntd || {});
+const { Title } = Typography;
 
 function Usuarios() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState('create'); // 'create' | 'edit'
+  const [form] = antd.Form.useForm();
+  const [empleados, setEmpleados] = useState([]);
+  const [toDelete, setToDelete] = useState(null);
+  const [sucursalFiltro, setSucursalFiltro] = useState(null);
+  const [openDelete, setOpenDelete] = useState(false);
 
-    const [dataSource, setDataSource] = useState([]);
-      useEffect(listarUsuarios, []);
-      const history = useHistory();
-
-      function listarUsuarios() {
-        google.script.run
-          .withSuccessHandler(res => {
-            const usuarios = JSON.parse(res);
-            let arreglo = [];
-
-            usuarios.map(usuario => {
-              arreglo.push({
-                key: usuario.id,
-                ...usuario,
-                acciones:
-                  <Button
-                    onClick={() => {
-                      antd.Modal.info({title:"Edición de usuario", content:"Pendiente de implementar edición desde esta vista."});
-                    }}>
-                    Editar
-                  </Button>
-              })
-            })
-
-            setDataSource(arreglo);
-
-          }).listarUsuarios();
-      }
-
-
-    const columns = [
-    {
-      title: 'Nombre Completo',
-      dataIndex: 'nombreCompleto',
-      key: 'nombreCompleto',
-    },
-    {
-      title: 'Correo',
-      dataIndex: 'correo',
-      key: 'correo',
-    },
-    {
-      title: 'Contraseña',
-      dataIndex: 'contrasenia',
-      key: 'contrasenia',
-    },
+  const columns = [
+    { title: 'N.', dataIndex: '__n__', key: '__n__', width: 80, render: (_r,_d,i)=> i+1 },
+    { title: 'Nombre completo', dataIndex: 'nombreCompleto', key: 'nombreCompleto' },
+    { title: 'Usuario', dataIndex: 'nombre_usuario', key: 'nombre_usuario' },
+    { title: 'Sucursal', dataIndex: 'nombreSucursal', key: 'nombreSucursal' },
+    { title: 'Rol', dataIndex: 'rol', key: 'rol', render: (v)=> String(v||'').replace('_',' ').toUpperCase() },
+    { title: 'Estado', dataIndex: 'estado', key: 'estado' },
     {
       title: 'Acciones',
-      dataIndex: 'acciones',
       key: 'acciones',
+      width: 160,
+      render: (_, record) => (
+        <Space>
+          <Button size="small" icon={<icons.EditOutlined />} onClick={() => abrirEditar(record)}>Editar</Button>
+          <Button size="small" danger icon={<icons.DeleteOutlined />} onClick={() => { setToDelete(record); setOpenDelete(true); }}>Eliminar</Button>
+        </Space>
+      ),
     },
   ];
 
+  useEffect(() => {
+    cargar();
+    cargarEmpleados();
+  }, []);
+
+  function normalizeResponse(res) {
+    try {
+      return (typeof res === 'string') ? JSON.parse(res) : res;
+    } catch (e) {
+      return res;
+    }
+  }
+
+  function cargar() {
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler((res) => {
+        setLoading(false);
+        const r = normalizeResponse(res);
+        const arr = Array.isArray((r && r.usuarios)) ? r.usuarios : Array.isArray(r) ? r : [];
+        setData(arr);
+      })
+      .withFailureHandler((err) => {
+        setLoading(false);
+        Modal.error({ title: 'Error', content: String((err && err.message) || err) });
+      })
+      .listarUsuarios();
+  }
+
+  function cargarEmpleados() {
+    google.script.run
+      .withSuccessHandler((res) => {
+        const r = normalizeResponse(res);
+        const arr = Array.isArray((r && r.empleados)) ? r.empleados : Array.isArray(r) ? r : [];
+        // Solo nombres y sucursal para autollenado en backend
+        setEmpleados(arr.filter(e => String(e.estado||'')==='Activo'));
+      })
+      .withFailureHandler(() => setEmpleados([]))
+      .listarEmpleados();
+  }
+
+  function abrirNuevo(){
+    setMode('create');
+    form.resetFields();
+    setOpen(true);
+  }
+
+  function abrirEditar(record){
+    setMode('edit');
+    form.setFieldsValue({
+      id: record.id,
+      nombreCompleto: record.nombreCompleto,
+      correo: record.correo,
+      contrasenia: '', // por seguridad no mostramos hash/valor
+      rol: record.rol,
+      estado: record.estado,
+    });
+    setOpen(true);
+  }
+
+  function onSubmit(){
+    form.validateFields().then(values => {
+      setLoading(true);
+
+      const runner = (mode==='create') ? 'guardarUsuarioSeguro' : 'actualizarUsuarioSeguro';
+      const payload = {
+        id: values.id || undefined,
+        nombreCompleto: values.nombreCompleto,
+        nombre_usuario: values.nombre_usuario,
+        contrasenia: values.contrasenia || '',
+        rol: values.rol,
+        estado: values.estado,
+      };
+
+      google.script.run
+        .withSuccessHandler(res => {
+          setLoading(false);
+          const r = normalizeResponse(res);
+          if (r && (r.ok || r.titulo)) {
+            message.success(mode==='create'?'Usuario creado':'Usuario actualizado');
+            setOpen(false);
+            form.resetFields();
+            cargar();
+          } else {
+            Modal.error({ title: 'Error', content: (r && r.message) || 'No se pudo guardar' });
+          }
+        })
+        .withFailureHandler(err => {
+          setLoading(false);
+          Modal.error({ title:'Error', content: String((err && err.message) || err) });
+        })
+        [runner](JSON.stringify(payload));
+    });
+  }
+
+  function confirmarEliminar(){
+    if (!toDelete) return;
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(res => {
+        setLoading(false);
+        const r = normalizeResponse(res);
+        if (r && (r.ok || r.titulo)) {
+          message.success('Usuario eliminado');
+          setOpenDelete(false);
+          setToDelete(null);
+          cargar();
+        } else {
+          Modal.error({ title: 'Error', content: (r && r.message) || 'No se pudo eliminar' });
+        }
+      })
+      .withFailureHandler(err => {
+        setLoading(false);
+        Modal.error({ title: 'Error', content: String((err && err.message) || err) });
+      })
+      .eliminarUsuario(toDelete.id);
+  }
+
   return (
-    <Table dataSource={dataSource} columns={columns} />
-  )
+    <div className="p-4">
+      
+      <div className="flex items-center justify-between mb-3">
+        <Title level={4} style={{ margin: 0 }}>Usuarios</Title>
+        <Space>
+          <Select allowClear placeholder="Filtrar por sucursal" style={{width:220}}
+                  value={sucursalFiltro}
+                  options={Array.from(new Set((data||[]).map(r => r.nombreSucursal).filter(Boolean)))
+                            .map(s => ({value:s,label:s}))}
+                  onChange={(v)=>setSucursalFiltro(v||null)} />
+          <Button icon={<icons.ReloadOutlined />} onClick={cargar}>Refrescar</Button>
+          <Button type="primary" icon={<icons.PlusOutlined />} onClick={abrirNuevo}>Nuevo</Button>
+        </Space>
+      </div>
+    
+      <Table
+        rowKey="id"
+        dataSource={Array.isArray(data)?data:[]}
+        columns={Array.isArray(columns)?columns:[]}
+        loading={loading}
+        pagination={{ pageSize: 8 }}
+      />
+
+      <Modal
+        visible={open}
+        onCancel={()=>setOpen(false)}
+        onOk={onSubmit}
+        title={mode==='create'?'Nuevo Usuario':'Editar Usuario'}
+        okText={mode==='create'?'Crear':'Guardar'}
+        confirmLoading={loading}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" preserve={false}>
+          <Form.Item name="id" hidden><Input /></Form.Item>
+          <Form.Item
+            name="nombreCompleto"
+            label="Nombre completo"
+            rules={[{ required:true, message:'Selecciona un empleado' }]}
+          >
+            <Select
+              showSearch
+              placeholder="Selecciona un empleado..."
+              optionFilterProp="label"
+              options={(empleados||[]).map(e => ({ value: e.nombre_empleado, label: e.nombre_empleado }))}
+            />
+          </Form.Item>
+          <Form.Item
+            name="nombre_usuario"
+            label="Usuario"
+            rules={[{ required:true, message:'Usuario válido' }]}
+          >
+            <Input placeholder="usuario (ej. andresp)" />
+          </Form.Item>
+          <Form.Item
+            name="contrasenia"
+            label="Contraseña"
+            rules={mode==='create'?[{ required:true, message:'Ingresa una contraseña' }]:[]}
+          >
+            <Input.Password placeholder={mode==='create'?'Nueva contraseña':'(Opcional) nueva contraseña'} />
+          </Form.Item>
+          <Form.Item
+            name="rol"
+            label="Rol"
+            rules={[{ required:true, message:'Selecciona un rol' }]}
+          >
+            <Select
+              options={[
+                { value:'super_admin', label:'Super Admin' },
+                { value:'admin', label:'Admin' }
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="estado"
+            label="Estado"
+            rules={[{ required:true, message:'Selecciona estado' }]}
+          >
+            <Select
+              options={[
+                { value:'Activo', label:'Activo' },
+                { value:'Inactivo', label:'Inactivo' }
+              ]}
+            />
+          </Form.Item>
+          {/* Campo Sucursal NO se muestra, se asigna automáticamente en el backend */}
+        </Form>
+      </Modal>
+
+      <Modal
+        visible={openDelete}
+        onCancel={() => { setOpenDelete(false); setToDelete(null); }}
+        onOk={confirmarEliminar}
+        title="Confirmar eliminación"
+        okText="Eliminar"
+        okButtonProps={{ danger:true }}
+        confirmLoading={loading}
+      >
+        <p>¿Eliminar el usuario <b>{(toDelete && toDelete.nombreCompleto)}</b>?</p>
+      </Modal>
+    </div>
+  );
 }
 
-
-
-//</script>
+ReactDOM.render(<Usuarios />, document.getElementById('UsuariosView'));
+</script>

@@ -19,20 +19,23 @@ function Login({ onLogin }) {
           // NOTA: TOMAMOS NOMBRE/EMAIL DEL BACKEND SI EXISTEN,
           // Y SI NO, USAMOS EL CORREO DEL FORMULARIO (ANTES DEL @) COMO NOMBRE.
           const raw = resp.user || {};
+          const username =
+            raw.nombre_usuario || values.nombre_usuario || raw.username || "";
           const email =
-            raw.email || raw.correo || raw.username || values.correo || "";
+            raw.email || raw.correo || "";
           const baseName =
+            raw.nombre_usuario ||
             raw.nombre ||
             raw.name ||
             raw.fullName ||
             raw.displayName ||
-            (email ? String(email).split("@")[0] : "Usuario");
+            (username ? String(username).split("@")[0] : "Usuario");
 
           const user = {
-            name: String(baseName).trim() || "Usuario",
-            email: String(email).trim() || "",
-            // PUEDES GUARDAR CAMPOS EXTRA DEL BACKEND SI LOS TRAES:
-            // id: raw.id, telefono: raw.telefono, etc.
+            nombre_usuario: String(username || "").trim(),
+            name: String(baseName || "").trim() || "Usuario",
+            email: String(email || "").trim() || "",
+            nombreCompleto: String(raw.nombreCompleto || raw.fullName || raw.name || "").trim()
           };
 
           // ===== PERSISTIR EN LOCALSTORAGE: userInfo + userRole =====
@@ -66,7 +69,7 @@ function Login({ onLogin }) {
         });
         console.error("Error al llamar a Apps Script:", error);
       })
-      .verificarCredenciales(values.correo, values.contrasenia);
+      .verificarCredenciales(values.nombre_usuario, values.contrasenia);
   };
 
   // Estilo de texto con “oro viejo” en degradado, sin CSS externo
@@ -124,18 +127,18 @@ function Login({ onLogin }) {
         >
           <Form form={form} name="login" initialValues={{ remember: true }} onFinish={onFinish} layout="vertical">
             <Item
-              label={<span style={{ color: "#bfa46f", fontWeight: "600" }}>Correo</span>}
-              name="correo"
+              label={<span style={{ color: "#bfa46f", fontWeight: "600" }}>Usuario</span>}
+              name="nombre_usuario"
               rules={[
-                { required: true, message: "¡Por favor ingresa tu correo!" },
-                { type: "email", message: "¡El formato del correo no es válido!" },
+                { required: true, message: '¡Por favor ingresa tu usuario!' },
+                {  },
               ]}
             >
               <Input
                 size="large"
                 className="rounded-md dark-input"
                 prefix={<icons.UserOutlined style={{ color: "#bfa46f" }} />}
-                placeholder="correo@ejemplo.com"
+                placeholder="usuario (ej. andresp)"
               />
             </Item>
 

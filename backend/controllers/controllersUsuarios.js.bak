@@ -1,0 +1,153 @@
+/**
+ * controllersUsuarios.js (SAFE)
+ * Inserción/actualización de usuarios con:
+ *  - UUID automático en 'id'
+ *  - Validación de correo duplicado (case-insensitive)
+ *  - Autocompletado de 'sucursal' desde hoja empleados (si la columna existe en 'registro usuarios')
+ * Requiere helpers globales: obtenerSheet(), env_(), Utilities (GAS)
+ */
+
+function __shUsuarios__(){ return obtenerSheet(env_().SH_REGISTRO_USUARIOS); }
+function __shEmpleados__(){ return obtenerSheet(env_().SH_EMPLEADOS || 'empleados'); }
+
+function __headMap__(sh){
+  var head = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  var idx = {}; for (var i=0;i<head.length;i++) idx[head[i]] = i;
+  return { head: head, idx: idx };
+}
+
+function __findById__(sh, id){
+  var data = sh.getDataRange().getDisplayValues();
+  if (!data || data.length === 0) return { row:null, rowIndex:-1 };
+  var head = data.shift();
+  var colId = head.indexOf('id');
+  if (colId < 0) return { row:null, rowIndex:-1 };
+  for (var r=0; r<data.length; r++){
+    if (String(data[r][colId]).trim() === String(id||'').trim()){
+      return { row: data[r], rowIndex: r+2 };
+    }
+  }
+  return { row:null, rowIndex:-1 };
+}
+
+function __existsCorreoExceptId__(correo, exceptId){
+  var sh = __shUsuarios__();
+  var data = sh.getDataRange().getDisplayValues();
+  if (!data || data.length === 0) return false;
+  var head = data.shift();
+  var colCorreo = head.indexOf('correo');
+  var colId = head.indexOf('id');
+  if (colCorreo < 0) return false;
+  var target = String(correo||'').trim().toLowerCase();
+  for (var r=0;r<data.length;r++){
+    var rowCorreo = String(data[r][colCorreo]||'').trim().toLowerCase();
+    var rowId = colId >= 0 ? String(data[r][colId]||'').trim() : '';
+    if (rowCorreo === target && (!exceptId || rowId !== String(exceptId))) return true;
+  }
+  return false;
+}
+
+function __sucursalFromEmpleadoNombre__(nombreEmpleado){
+  try{
+    var sh = __shEmpleados__();
+    var data = sh.getDataRange().getDisplayValues();
+    if (!data || data.length === 0) return '';
+    var head = data.shift();
+    var iNombre = head.indexOf('nombre_empleado');
+    var iSuc = head.indexOf('nombreSucursal');
+    if (iNombre < 0 || iSuc < 0) return '';
+    for (var r=0;r<data.length;r++){
+      if (String(data[r][iNombre]).trim() === String(nombreEmpleado||'').trim()){
+        return data[r][iSuc] || '';
+      }
+    }
+  }catch(e){}
+  return '';
+}
+
+/** Crear */
+function guardarUsuarioSeguro(usuarioJson){
+  try{
+    var sh = __shUsuarios__();
+    var map = __headMap__(sh), head = map.head, idx = map.idx;
+    var u = (typeof usuarioJson === 'string') ? JSON.parse(usuarioJson) : (usuarioJson || {});
+
+    if (__existsCorreoExceptId__(u.correo, null)){
+      return { ok:false, titulo:"Correo duplicado", descripcion:"Ya existe un usuario con ese correo." };
+    }
+
+    var row = new Array(head.length);
+    if (idx.id != null) row[idx.id] = Utilities.getUuid();
+    if (idx.nombreCompleto != null) row[idx.nombreCompleto] = u.nombreCompleto || '';
+    if (idx.correo != null) row[idx.correo] = u.correo || '';
+    if (idx.contrasenia != null) row[idx.contrasenia] = u.contrasenia || '';
+    if (idx.rol != null) row[idx.rol] = u.rol || 'admin';
+    if (idx.estado != null) row[idx.estado] = u.estado || 'activo';
+
+    // Si la columna 'sucursal' existe, autocompletar usando empleados
+    if (idx.sucursal != null){
+      var suc = u.sucursal || __sucursalFromEmpleadoNombre__(u.nombreCompleto);
+      row[idx.sucursal] = suc || '';
+    }
+
+    sh.appendRow(row);
+    return { ok:true, titulo:"Registro Exitoso!!", descripcion:"Usuario creado correctamente" };
+  }catch(error){
+    return { ok:false, titulo:"Ocurrió un error: "+error, descripcion:"Contacte a soporte." };
+  }
+}
+
+/** Actualizar */
+function actualizarUsuarioSeguro(id, datosJson){
+  try{
+    var sh = __shUsuarios__();
+    var map = __headMap__(sh), head = map.head, idx = map.idx;
+    var d = (typeof datosJson === 'string') ? JSON.parse(datosJson) : (datosJson || {});
+
+    if (d.correo && __existsCorreoExceptId__(d.correo, id)){
+      return { ok:false, titulo:"Correo duplicado", descripcion:"Ya existe un usuario con ese correo." };
+    }
+
+    var found = __findById__(sh, id);
+    if (found.rowIndex < 0) return { ok:false, titulo:"No encontrado", descripcion:"No existe el registro." };
+
+    for (var k in d){
+      if (!d.hasOwnProperty(k)) continue;
+      if (idx[k] == null) continue;
+      var val = d[k];
+      if (k === 'sucursal' && (!val || val === '')){
+        val = __sucursalFromEmpleadoNombre__(d.nombreCompleto);
+      }
+      sh.getRange(found.rowIndex, idx[k]+1).setValue(val);
+    }
+    return { ok:true, titulo:"Actualizado correctamente", descripcion:"Usuario actualizado" };
+  }catch(error){
+    return { ok:false, titulo:"Ocurrió un error: "+error, descripcion:"Contacte a soporte." };
+  }
+}
+
+/** Eliminar */
+function eliminarUsuarioSeguro(id){
+  try{
+    var sh = __shUsuarios__();
+    var found = __findById__(sh, id);
+    if (found.rowIndex < 0) return { ok:false, titulo:"No encontrado", descripcion:"No existe el registro." };
+    sh.deleteRow(found.rowIndex);
+    return { ok:true, titulo:"Eliminado", descripcion:"Usuario eliminado" };
+  }catch(e){
+    return { ok:false, titulo:"Ocurrió un error: "+e, descripcion:"Contacte a soporte." };
+  }
+}
+
+/** Listado simple (para vista) */
+function listarUsuarios(){
+  var sh = __shUsuarios__();
+  var values = sh.getDataRange().getDisplayValues();
+  if (!values || values.length===0) return [];
+  var head = values.shift();
+  return values.map(function(r){
+    var o = {};
+    for (var i=0;i<head.length;i++) o[head[i]] = r[i];
+    return o;
+  });
+}

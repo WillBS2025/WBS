@@ -1,0 +1,188 @@
+<!-- frontend/views/usuarios/Usuarios.html -->
+<section id="Usuarios" style="display:none">
+  <script type="text/babel">
+const { useEffect, useMemo, useState } = React;
+const { Table, Button, Modal, Form, Input, Select, Space, message, Tag } = antd;
+
+function Usuarios() {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [empleados, setEmpleados] = useState([]);
+  const [form] = Form.useForm();
+
+  // small helper to call google.script.run as promise
+  function gs(fn, ...args){
+    return new Promise((resolve, reject)=>{
+      try{
+        const runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+        runner[fn](...args);
+      }catch(err){ reject(err); }
+    });
+  }
+
+  async function cargar(){
+    setLoading(true);
+    try{
+      const [usuariosRaw, empleadosRaw] = await Promise.all([
+        gs('listarUsuarios'),
+        gs('listarEmpleadosMin') // expects [{nombre_empleado, nombreSucursal}]
+      ]);
+      const safeUsuarios = Array.isArray(usuariosRaw) ? usuariosRaw : [];
+      setData(safeUsuarios);
+      const safeEmps = Array.isArray(empleadosRaw) ? empleadosRaw : [];
+      setEmpleados(safeEmps);
+    }catch(err){
+      console.error('Error al cargar usuarios', err);
+      message.error('No se pudo cargar Usuarios.');
+      setData([]);
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  useEffect(()=>{ cargar(); }, []);
+
+  function abrirNuevo(){
+    setEditing(null);
+    form.resetFields();
+    setOpen(true);
+  }
+  function abrirEditar(reg){
+    setEditing(reg);
+    form.setFieldsValue({
+      nombreCompleto: reg.nombreCompleto,
+      correo: reg.correo,
+      contrasenia: reg.contrasenia,
+      rol: reg.rol,
+      estado: reg.estado
+    });
+    setOpen(true);
+  }
+
+  const columnas = [
+    { title:'ID', dataIndex:'id', width: 300, responsive:['md'] },
+    { title:'Nombre', dataIndex:'nombreCompleto' },
+    { title:'Correo', dataIndex:'correo' },
+    { title:'Rol', dataIndex:'rol' },
+    { title:'Estado', dataIndex:'estado', render:(v)=> <Tag color={String(v).toLowerCase()==='activo' ? 'green' : 'red'}>{v}</Tag> },
+    { title:'', width:120, render:(_,r)=> (
+      <Space>
+        <Button size="small" onClick={()=>abrirEditar(r)} icon={<i className="ri-edit-line" />}>Editar</Button>
+        <Button size="small" danger onClick={()=>eliminar(r)} icon={<i className="ri-delete-bin-6-line" />}>Eliminar</Button>
+      </Space>
+    ) }
+  ];
+
+  async function eliminar(reg){
+    Modal.confirm({
+      title: 'Eliminar usuario',
+      content: '¿Seguro que deseas eliminar este usuario?',
+      okText: 'Eliminar',
+      okButtonProps: { danger: true },
+      onOk: async()=>{
+        try{
+          await gs('eliminarUsuario', reg.id);
+          message.success('Eliminado');
+          cargar();
+        }catch(err){
+          console.error(err);
+          message.error('No se pudo eliminar.');
+        }
+      }
+    });
+  }
+
+  function onNombreChange(nombre){
+    // auto establecer sucursal en campo oculto
+    const m = empleados.find(e=>e.nombre_empleado===nombre);
+    form.setFieldsValue({ _sucursalHidden: m ? m.nombreSucursal : '' });
+  }
+
+  async function onSubmit(){
+    try{
+      const values = await form.validateFields();
+      const payload = { 
+        nombreCompleto: values.nombreCompleto,
+        correo: values.correo,
+        contrasenia: values.contrasenia,
+        rol: values.rol,
+        estado: values.estado,
+        sucursal: values._sucursalHidden || '' // oculto
+      };
+      if(editing?.id){
+        const ok = await gs('actualizarUsuarioSeguro', editing.id, payload);
+        if(ok){ message.success('Actualizado'); setOpen(false); cargar(); }
+        else { message.error('No se pudo actualizar. Revise duplicados.'); }
+      }else{
+        const ok = await gs('guardarUsuarioSeguro', payload);
+        if(ok){ message.success('Creado'); setOpen(false); cargar(); }
+        else { message.error('No se pudo crear. Puede existir un usuario con el mismo correo.'); }
+      }
+    }catch(err){
+      if(err?.errorFields){ /* validation error */ }
+      else{
+        console.error(err);
+        message.error('Operación fallida');
+      }
+    }
+  }
+
+  const empleadosOptions = useMemo(()=>empleados.map(e=>({ value: e.nombre_empleado, label: e.nombre_empleado })),[empleados]);
+
+  return (
+    <div className="p-3">
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-xl font-semibold">Usuarios</h2>
+        <Space>
+          <Button onClick={cargar} icon={<i className="ri-refresh-line" />}>Refrescar</Button>
+          <Button type="primary" onClick={abrirNuevo} icon={<i className="ri-add-line" />}>Nuevo</Button>
+        </Space>
+      </div>
+
+      <Table
+        rowKey="id"
+        loading={loading}
+        dataSource={Array.isArray(data)?data:[]}
+        columns={columnas}
+        pagination={{ pageSize: 5, showSizeChanger:false }}
+      />
+
+      <Modal
+        title={editing ? 'Editar Usuario' : 'Nuevo Usuario'}
+        open={open}
+        onCancel={()=>setOpen(false)}
+        onOk={onSubmit}
+        okText={editing ? 'Actualizar' : 'Crear'}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" preserve={false}>
+          <Form.Item name="nombreCompleto" label="Nombre completo" rules={[{ required:true, message:'Seleccione un empleado' }]}>
+            <Select showSearch placeholder="Seleccione empleado" options={empleadosOptions} onChange={onNombreChange} />
+          </Form.Item>
+
+          {/* Campo oculto con sucursal auto */}
+          <Form.Item name="_sucursalHidden" hidden><Input /></Form.Item>
+
+          <Form.Item name="correo" label="Correo" rules={[{ required:true, type:'email', message:'Correo inválido' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="contrasenia" label="Contraseña" rules={[{ required:true, message:'Ingrese contraseña' }]}>
+            <Input.Password />
+          </Form.Item>
+          <Form.Item name="rol" initialValue="admin" label="Rol" rules={[{ required:true }]}>
+            <Select options={[{value:'admin', label:'admin'},{value:'super_admin', label:'super_admin'}]} />
+          </Form.Item>
+          <Form.Item name="estado" initialValue="activo" label="Estado" rules={[{ required:true }]}>
+            <Select options={[{value:'activo', label:'activo'},{value:'inactivo', label:'inactivo'}]} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Usuarios />);
+</script>
+</section>

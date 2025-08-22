@@ -1,131 +1,131 @@
 <style>
-  /* ========= KNOBS (AJUSTES RÁPIDOS EN PIXELES) ========= */
-  :root{
-    /* ANCHO LATERAL DEL CONTENIDO */
-    --shell-pad: 16px;
+    /* ========= KNOBS (AJUSTES RÁPIDOS EN PIXELES) ========= */
+    :root{
+        /* ANCHO LATERAL DEL CONTENIDO */
+        --shell-pad: 16px;
 
-    /* HEADER: CONTROLA EL GROSOR VERTICAL */
-    --appbar-margin-y: 8px;     /* SEPARACIÓN DEL HEADER ARRIBA/ABAJO */
-    --appbar-pad-y: 5px;        /* PADDING VERTICAL INTERNO DEL HEADER */
-    --appbar-pad-x: 10px;       /* PADDING HORIZONTAL */
-    --appbar-row-h: 50px;       /* ALTURA DE LA FILA (antes 50px) => más delgado */
-    --appbar-accent-h: 3px;     /* ALTURA DE LA FRANJA DORADA */
+        /* HEADER: CONTROLA EL GROSOR VERTICAL */
+        --appbar-margin-y: 8px;     /* SEPARACIÓN DEL HEADER ARRIBA/ABAJO */
+        --appbar-pad-y: 5px;        /* PADDING VERTICAL INTERNO DEL HEADER */
+        --appbar-pad-x: 10px;       /* PADDING HORIZONTAL */
+        --appbar-row-h: 50px;       /* ALTURA DE LA FILA (antes 50px) => más delgado */
+        --appbar-accent-h: 3px;     /* ALTURA DE LA FRANJA DORADA */
 
-    /* CHIP DE USUARIO (EL BOTÓN CON EL NOMBRE) */
-    --chip-h: 32px;             /* ALTURA TOTAL DEL CHIP (antes 40px) */
-    --chip-pad-x: 10px;         /* PADDING HORIZONTAL DEL CHIP */
-    --chip-radius: 10px;        /* RADIO (MENOS = MÁS CUADRADO) */
-    --chip-avatar: 16px;        /* TAMAÑO DEL AVATAR/INICIALES */
-    --chip-font: 14px;          /* TAMAÑO DE LETRA DEL NOMBRE */
-  }
+        /* CHIP DE USUARIO (EL BOTÓN CON EL NOMBRE) */
+        --chip-h: 32px;             /* ALTURA TOTAL DEL CHIP (antes 40px) */
+        --chip-pad-x: 10px;         /* PADDING HORIZONTAL DEL CHIP */
+        --chip-radius: 10px;        /* RADIO (MENOS = MÁS CUADRADO) */
+        --chip-avatar: 16px;        /* TAMAÑO DEL AVATAR/INICIALES */
+        --chip-font: 14px;          /* TAMAÑO DE LETRA DEL NOMBRE */
+    }
 
-  /* ===== CONTENIDO CENTRADO ===== */
-  .wbs-shell{ max-width:1120px; margin:0 auto; padding:0 var(--shell-pad); }
+    /* ===== CONTENIDO CENTRADO ===== */
+    .wbs-shell{ max-width:1120px; margin:0 auto; padding:0 var(--shell-pad); }
 
-  /* LAYOUT BASE */
-  .ant-layout-content{ background:transparent !important; }
-  .ant-layout-sider{ position:fixed; left:0; top:0; bottom:0; z-index:100; }
-  @media (max-width: 991px){ .app-main{ margin-left:0 !important; } }
+    /* LAYOUT BASE */
+    .ant-layout-content{ background:transparent !important; }
+    .ant-layout-sider{ position:fixed; left:0; top:0; bottom:0; z-index:100; }
+    @media (max-width: 991px){ .app-main{ margin-left:0 !important; } }
 
-  /* ===== HEADER ===== */
-  .appbar{ position:sticky; top:0; z-index:20; background:transparent; }
-  /* AHORA NO “SANGRA”: MISMO ANCHO QUE .wbs-shell */
-  .appbar__bleed{ margin:0; }
-  .appbar__inner{
-    /* GROSOR ≈ --appbar-accent-h + 2*--appbar-pad-y + --appbar-row-h + 2px bordes */
-    margin: var(--appbar-margin-y) 0;
-    padding: var(--appbar-pad-y) var(--appbar-pad-x);
-    width:100%;                                 /* igual al ancho del contenido */
-    background: rgba(255,255,255,.88);
-    border: 1px solid rgba(15,23,42,.08);
-    border-radius: 12px;
-    box-shadow: 0 8px 18px rgba(2,6,23,.06);
-    backdrop-filter: saturate(150%) blur(4px);
-    position:relative; overflow:hidden;
-  }
-  .appbar__accent{
-    position:absolute; left:0; right:0; top:0; height:var(--appbar-accent-h);
-    background:linear-gradient(90deg,#eab308,#f59e0b,#eab308);
-    background-size:200% 100%; animation:appbar-move 12s linear infinite;
-  }
-  @keyframes appbar-move{ from{background-position:0 0} to{background-position:200% 0} }
-  .appbar__row{
-    display:flex; align-items:center; justify-content:flex-end;
-    min-height: var(--appbar-row-h);
-  }
+    /* ===== HEADER ===== */
+    .appbar{ position:sticky; top:0; z-index:20; background:transparent; }
+    /* AHORA NO “SANGRA”: MISMO ANCHO QUE .wbs-shell */
+    .appbar__bleed{ margin:0; }
+    .appbar__inner{
+        /* GROSOR ≈ --appbar-accent-h + 2*--appbar-pad-y + --appbar-row-h + 2px bordes */
+        margin: var(--appbar-margin-y) 0;
+        padding: var(--appbar-pad-y) var(--appbar-pad-x);
+        width:100%;                                 /* igual al ancho del contenido */
+        background: rgba(255,255,255,.88);
+        border: 1px solid rgba(15,23,42,.08);
+        border-radius: 12px;
+        box-shadow: 0 8px 18px rgba(2,6,23,.06);
+        backdrop-filter: saturate(150%) blur(4px);
+        position:relative; overflow:hidden;
+    }
+    .appbar__accent{
+        position:absolute; left:0; right:0; top:0; height:var(--appbar-accent-h);
+        background:linear-gradient(90deg,#eab308,#f59e0b,#eab308);
+        background-size:200% 100%; animation:appbar-move 12s linear infinite;
+    }
+    @keyframes appbar-move{ from{background-position:0 0} to{background-position:200% 0} }
+    .appbar__row{
+        display:flex; align-items:center; justify-content:flex-end;
+        min-height: var(--appbar-row-h);
+    }
 
-  /* ===== CHIP DE USUARIO (SLIM) ===== */
-  .userchipSlim{
-    display:inline-flex; align-items:center; gap:8px;
-    height: var(--chip-h);
-    padding: 0 var(--chip-pad-x);
-    border-radius: var(--chip-radius);
-    border:1px solid rgba(2,6,23,.12);
-    background:rgba(255,255,255,.92);
-    box-shadow:0 1px 2px rgba(2,6,23,.06);
-    cursor:pointer; transition:all .15s ease;
-    line-height:1; vertical-align:middle;       /* evita letras “sueltas” */
-  }
-  .userchipSlim:hover{
-    border-color:#f0c24a; box-shadow:0 2px 6px rgba(2,6,23,.08);
-    background:rgba(255,255,255,.96);
-  }
-  .userchipSlim__avatar{
-    width: var(--chip-avatar); height: var(--chip-avatar);
-    border-radius: calc(var(--chip-radius) * 0.6);
-    border:1px solid rgba(2,6,23,.12);
-    display:grid; place-items:center;
-    font-size: calc(var(--chip-font) - 2px);
-    font-weight:700; color:#111; background:#fff;
-    line-height:1;
-  }
-  .userchipSlim__name{
-    font-weight:600; font-size: var(--chip-font); letter-spacing:.2px; color:#1f2937;
-    max-width:140px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  }
-  /* Punto dorado animado junto al nombre */
-  .userchipSlim__pulse{
-    width:6px; height:6px; border-radius:999px; margin-left:2px;
-    background:#f59e0b; box-shadow:0 0 0 0 rgba(245,158,11,.6);
-    animation:pulseGold 1.6s ease-out infinite;
-  }
-  @keyframes pulseGold{
-    0%{ box-shadow:0 0 0 0 rgba(245,158,11,.6); transform:scale(1); }
-    70%{ box-shadow:0 0 0 8px rgba(245,158,11,0); transform:scale(1.05); }
-    100%{ box-shadow:0 0 0 0 rgba(245,158,11,0); transform:scale(1); }
-  }
+    /* ===== CHIP DE USUARIO (SLIM) ===== */
+    .userchipSlim{
+        display:inline-flex; align-items:center; gap:8px;
+        height: var(--chip-h);
+        padding: 0 var(--chip-pad-x);
+        border-radius: var(--chip-radius);
+        border:1px solid rgba(2,6,23,.12);
+        background:rgba(255,255,255,.92);
+        box-shadow:0 1px 2px rgba(2,6,23,.06);
+        cursor:pointer; transition:all .15s ease;
+        line-height:1; vertical-align:middle;       /* evita letras “sueltas” */
+    }
+    .userchipSlim:hover{
+        border-color:#f0c24a; box-shadow:0 2px 6px rgba(2,6,23,.08);
+        background:rgba(255,255,255,.96);
+    }
+    .userchipSlim__avatar{
+        width: var(--chip-avatar); height: var(--chip-avatar);
+        border-radius: calc(var(--chip-radius) * 0.6);
+        border:1px solid rgba(2,6,23,.12);
+        display:grid; place-items:center;
+        font-size: calc(var(--chip-font) - 2px);
+        font-weight:700; color:#111; background:#fff;
+        line-height:1;
+    }
+    .userchipSlim__name{
+        font-weight:600; font-size: var(--chip-font); letter-spacing:.2px; color:#1f2937;
+        max-width:140px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    /* Punto dorado animado junto al nombre */
+    .userchipSlim__pulse{
+        width:6px; height:6px; border-radius:999px; margin-left:2px;
+        background:#f59e0b; box-shadow:0 0 0 0 rgba(245,158,11,.6);
+        animation:pulseGold 1.6s ease-out infinite;
+    }
+    @keyframes pulseGold{
+        0%{ box-shadow:0 0 0 0 rgba(245,158,11,.6); transform:scale(1); }
+        70%{ box-shadow:0 0 0 8px rgba(245,158,11,0); transform:scale(1.05); }
+        100%{ box-shadow:0 0 0 0 rgba(245,158,11,0); transform:scale(1); }
+    }
 
-  /* ===== POPOVER: IZQ INFO / SEP / DER ICONO LOGOUT ===== */
-  .usercard{ min-width:300px; display:flex; align-items:center; }
-  .usercard__left{
-    flex:1; display:flex; align-items:center; gap:10px; padding:6px 4px;
-  }
-  .usercard__initial{
-    width:32px; height:32px; border-radius:8px;
-    display:grid; place-items:center;
-    background:linear-gradient(135deg,#fde68a,#f59e0b); color:#111; font-weight:800;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.6);
-    font-size:12px; line-height:1;
-  }
-  .usercard__title{ font-weight:700; line-height:1.1; }
-  .usercard__email{ font-size:12px; color:#64748b; }
-  .usercard__sep{ width:1px; align-self:stretch; background:rgba(2,6,23,.08); margin:0 10px; }
-  .usercard__right{ width:56px; display:flex; align-items:center; justify-content:center; padding:4px 0; }
-  .logoutIconBtn{
-    width:38px; height:38px; border-radius:10px;
-    display:grid; place-items:center; background:#fff;
-    color:#dc2626; border:1px solid #fecaca;
-  }
-  .logoutIconBtn:hover{ background:#fff5f5; }
+    /* ===== POPOVER: IZQ INFO / SEP / DER ICONO LOGOUT ===== */
+    .usercard{ min-width:300px; display:flex; align-items:center; }
+    .usercard__left{
+        flex:1; display:flex; align-items:center; gap:10px; padding:6px 4px;
+    }
+    .usercard__initial{
+        width:32px; height:32px; border-radius:8px;
+        display:grid; place-items:center;
+        background:linear-gradient(135deg,#fde68a,#f59e0b); color:#111; font-weight:800;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.6);
+        font-size:12px; line-height:1;
+    }
+    .usercard__title{ font-weight:700; line-height:1.1; }
+    .usercard__email{ font-size:12px; color:#64748b; }
+    .usercard__sep{ width:1px; align-self:stretch; background:rgba(2,6,23,.08); margin:0 10px; }
+    .usercard__right{ width:56px; display:flex; align-items:center; justify-content:center; padding:4px 0; }
+    .logoutIconBtn{
+        width:38px; height:38px; border-radius:10px;
+        display:grid; place-items:center; background:#fff;
+        color:#dc2626; border:1px solid #fecaca;
+    }
+    .logoutIconBtn:hover{ background:#fff5f5; }
 </style>
 
 <script type="text/jsx">
-  function AppTopBar(props){
+function AppTopBar(props){
     var user = props && props.user ? props.user : {};
     var onLogout = props && props.onLogout ? props.onLogout : function(){};
 
     var baseName = "";
-    if (user) baseName = user.displayName || user.name || user.fullName || user.nombre || user.email || "";
+    if (user) baseName = user.nombre_usuario || user.displayName || user.name || user.fullName || user.nombre || user.email || "";
     if (!baseName) baseName = "Usuario";
     var shortName = (String(baseName).indexOf("@") !== -1) ? String(baseName).split("@")[0] : String(baseName);
 
@@ -136,130 +136,144 @@
 
     var Popover = antd.Popover;
 
-    /* Popover: izquierda info; separador; derecha icono logout */
-    var popContent = (
-      <div className="usercard">
-        <div className="usercard__left">
-          <div className="usercard__initial">{initials}</div>
-          <div>
-            <div className="usercard__title">{shortName}</div>
-            <div className="usercard__email">{user && user.email ? user.email : ""}</div>
-          </div>
-        </div>
-        <div className="usercard__sep"></div>
-        <div className="usercard__right">
-          <button className="logoutIconBtn" onClick={onLogout} title="Cerrar sesión">
-            <icons.LogoutOutlined />
-          </button>
-        </div>
-      </div>
-    );
-
-    return (
-      <div className="appbar">
-        <div className="wbs-shell">
-          <div className="appbar__bleed">
-            <div className="appbar__inner">
-              <div className="appbar__accent" />
-              <div className="appbar__row">
-                <Popover content={popContent} trigger="click" placement="bottomRight">
-                  {/* CHIP SLIM: MÁS DELGADO Y PROFESIONAL */}
-                  <button type="button" className="userchipSlim" title={baseName}>
-                    <span className="userchipSlim__avatar">{initials}</span>
-                    <span className="userchipSlim__name">{shortName}</span>
-                    <span className="userchipSlim__pulse" aria-hidden="true"></span>
-                  </button>
-                </Popover>
-              </div>
+        /* Popover: izquierda info; separador; derecha icono logout */
+        var popContent = (
+        <div className="usercard">
+            <div className="usercard__left">
+            <div className="usercard__initial">{initials}</div>
+            <div>
+                <div className="usercard__title">{shortName}</div>
+                <div className="usercard__email">{(user && (user.nombre_usuario || user.email || user.nombreCompleto || user.fullName || user.name || user.displayName)) ? (user.nombre_usuario || user.email || user.nombreCompleto || user.fullName || user.name || user.displayName) : ""}</div>
             </div>
-          </div>
+            </div>
+            <div className="usercard__sep"></div>
+            <div className="usercard__right">
+            <button className="logoutIconBtn" onClick={onLogout} title="Cerrar sesión">
+                <icons.LogoutOutlined />
+            </button>
+            </div>
         </div>
-      </div>
-    );
-  }
+        );
+
+        return (
+        <div className="appbar">
+            <div className="wbs-shell">
+            <div className="appbar__bleed">
+                <div className="appbar__inner">
+                <div className="appbar__accent" />
+                <div className="appbar__row">
+                    <Popover content={popContent} trigger="click" placement="bottomRight">
+                    {/* CHIP SLIM: MÁS DELGADO Y PROFESIONAL */}
+                    <button type="button" className="userchipSlim" title={baseName}>
+                        <span className="userchipSlim__avatar">{initials}</span>
+                        <span className="userchipSlim__name">{shortName}</span>
+                        <span className="userchipSlim__pulse" aria-hidden="true"></span>
+                    </button>
+                    </Popover>
+                </div>
+                </div>
+            </div>
+            </div>
+        </div>
+        );
+    }
 </script>
 
 <!-- TU Routes SIN CAMBIOS ESTRUCTURALES -->
 <script type="text/jsx">
 //<script type="text/jsx">
 function Routes() {
-  const [isAuthenticated, setIsAuthenticated] = useState(localStorage.getItem('isAuthenticated') === 'true');
-  const history = useHistory();
-  const [collapsed, setCollapsed] = useState(false);
+    const [isAuthenticated, setIsAuthenticated] = useState(localStorage.getItem('isAuthenticated') === 'true');
+    const history = useHistory();
+    const navigate = (to) => {
+        try {
+        if (history && typeof history.push === 'function') {
+            history.push(to);
+        } else if (window && window.location) {
+            // Fallback for Apps Script iframe/hash
+            if (to.startsWith('/')) to = to.substring(1);
+            window.location.hash = '#/' + to;
+        }
+        } catch (e) {
+        if (window && window.location) {
+            if (to.startsWith('/')) to = to.substring(1);
+            window.location.hash = '#/' + to;
+        }
+        }
+    };
+    const [collapsed, setCollapsed] = useState(false);
 
-  const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('userInfo') || '{}'); }
-    catch(_) { return {}; }
-  });
+    const [user, setUser] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('userInfo') || '{}'); }
+        catch(_) { return {}; }
+    });
 
-  useEffect(() => {
-    localStorage.setItem('isAuthenticated', isAuthenticated);
-    try { setUser(JSON.parse(localStorage.getItem('userInfo') || '{}')); } catch(_) {}
-  }, [isAuthenticated]);
+    useEffect(() => {
+        localStorage.setItem('isAuthenticated', isAuthenticated);
+        try { setUser(JSON.parse(localStorage.getItem('userInfo') || '{}')); } catch(_) {}
+    }, [isAuthenticated]);
 
-  const SIDER_EXPANDED = 220;
-  const SIDER_COLLAPSED = 80;
+    const SIDER_EXPANDED = 220;
+    const SIDER_COLLAPSED = 80;
 
-  const handleLogin = (success) => {
-    setIsAuthenticated(success);
-    if (success) { history.push("/"); }
-  };
+    const handleLogin = (success) => {
+        setIsAuthenticated(success);
+        if (success) { try { history && history.push && history.push("/"); } catch(_) { window.location.href = window.location.origin + window.location.pathname + "#/"; } }
+    };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem('isAuthenticated');
-    try { localStorage.removeItem('userRole'); localStorage.removeItem('userInfo'); } catch (_) {}
-    history.push("/login");
-  };
+    const handleLogout = () => {
+        setIsAuthenticated(false);
+        localStorage.removeItem('isAuthenticated');
+        try { localStorage.removeItem('userRole'); localStorage.removeItem('userInfo'); } catch (_) {}
+        try { if (history && history.push) history.push("/login"); } catch(_) { window.location.href = window.location.origin + window.location.pathname + "#/login"; }
+    };
 
-  const onCollapse = (c) => setCollapsed(c);
+    const onCollapse = (c) => setCollapsed(c);
 
-  return (
-    <Router>
-      {isAuthenticated ? (
-        <Layout style={{ minHeight: '100vh' }}>
-          <Sidebar collapsed={collapsed} onCollapse={onCollapse} handleLogout={handleLogout} />
+    return isAuthenticated ? (
+            <Layout style={{ minHeight: '100vh' }}>
+            <Sidebar collapsed={collapsed} onCollapse={onCollapse} handleLogout={handleLogout} />
 
-          <Layout className="app-main" style={{ marginLeft: collapsed ? SIDER_COLLAPSED : SIDER_EXPANDED, minHeight:'100vh' }}>
-            <Layout.Header style={{ background: 'transparent', padding: 0 }}>
-              <AppTopBar user={user} onLogout={handleLogout} />
-            </Layout.Header>
+            <Layout className="app-main" style={{ marginLeft: collapsed ? SIDER_COLLAPSED : SIDER_EXPANDED, minHeight:'100vh' }}>
+                <Layout.Header style={{ background: 'transparent', padding: 0 }}>
+                <AppTopBar user={user} onLogout={handleLogout} />
+                </Layout.Header>
 
-            <Layout.Content style={{ margin: 0 }}>
-              <div className="wbs-shell">
-                <Breadcrumb style={{ margin: '0 0 12px' }} />
-                <div className="site-layout-background" style={{ padding: '10px 10px', minHeight: 360 }}>
-                  <Switch>
-                    <Route exact path="/" component={Inicio} />
-                    <Route exact path="/Servicios" component={Servicios} />
-                    <Route exact path="/Empleados" component={Empleados} />
-                    <Route exact path="/Inventario" component={Inventario} />
-                    <Route exact path="/Ventas" component={Ventas} />
-                    <Route exact path="/Reportes" component={Reportes} />
-                    <Route exact path="/Sucursales" component={Sucursales} />
-                    <Route exact path="/Gastos" component={Gastos} />
-                    <Route exact path="/inventario/productos" component={Productos} />
-                    <Route exact path="/inventario/suministros" component={Suministros} />
-                    <Redirect to="/" />
-                  </Switch>
+                <Layout.Content style={{ margin: 0 }}>
+                <div className="wbs-shell">
+                    <Breadcrumb style={{ margin: '0 0 12px' }} />
+                    <div className="site-layout-background" style={{ padding: '10px 10px', minHeight: 360 }}>
+                    <Switch>
+                        <Route exact path="/" component={Inicio} />
+                        <Route exact path="/Servicios" component={Servicios} />
+                        <Route exact path="/Empleados" component={Empleados} />
+                        <Route exact path="/Clientes" component={Clientes} />
+                        <Route exact path="/Usuarios" component={Usuarios} />
+                        <Route exact path="/Inventario" component={Inventario} />
+                        <Route exact path="/Ventas" component={Ventas} />
+                        <Route exact path="/Reportes" component={Reportes} />
+                        <Route exact path="/Sucursales" component={Sucursales} />
+                        <Route exact path="/Gastos" component={Gastos} />
+                        <Route exact path="/inventario/productos" component={Productos} />
+                        <Route exact path="/inventario/suministros" component={Suministros} />
+                        <Redirect to="/" />
+                    </Switch>
+                    </div>
                 </div>
-              </div>
-            </Layout.Content>
+                </Layout.Content>
 
-            <Layout.Footer style={{ background:'transparent', padding: 0 }}>
-              <AppFooter brand="SomniumIA" />
-            </Layout.Footer>
-          </Layout>
-        </Layout>
-      ) : (
-        <Switch>
-          <Route exact path="/login">
-            <Login onLogin={handleLogin} />
-          </Route>
-          <Redirect to="/login" />
-        </Switch>
-      )}
-    </Router>
-  );
+                <Layout.Footer style={{ background:'transparent', padding: 0 }}>
+                <AppFooter brand="SomniumIA" />
+                </Layout.Footer>
+            </Layout>
+            </Layout>
+        ) : (
+            <Switch>
+            <Route exact path="/login">
+                <Login onLogin={handleLogin} />
+                </Route>
+                <Redirect to="/login" />
+            </Switch>
+    );
 }
 //</script>

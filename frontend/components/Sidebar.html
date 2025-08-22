@@ -13,9 +13,10 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
   // ================================
   const defaultOpen = React.useMemo(() => {
     try {
-      return (window.location.pathname || "").startsWith("/inventario")
-        ? ["inventario"]
-        : [];
+      const p = (window.location.pathname || "");
+      if (p.startsWith("/inventario")) return ["inventario"];
+      if (p.startsWith("/Empleados") || p.startsWith("/Clientes") || p.startsWith("/Usuarios")) return ["personas"];
+      return [];
     } catch (_) {
       return [];
     }
@@ -64,9 +65,11 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
         )}
 
         {isSuperAdmin && (
-        <Menu.Item key="3" icon={<icons.TeamOutlined />}>
-          <Link to="/empleados">Empleados</Link>
-        </Menu.Item>
+        <Menu.SubMenu key="personas" icon={<icons.TeamOutlined />} title="Personas">
+          <Menu.Item key="personas-empleados"><Link to="/Empleados">Empleados</Link></Menu.Item>
+          <Menu.Item key="personas-clientes"><Link to="/Clientes">Clientes</Link></Menu.Item>
+          <Menu.Item key="personas-usuarios"><Link to="/Usuarios">Usuarios</Link></Menu.Item>
+        </Menu.SubMenu>
         )}
 
         {/* ================================

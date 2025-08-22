@@ -1,0 +1,97 @@
+// <script type="text/jsx">
+function Clientes() {
+  const { useState, useEffect } = React;
+  const { Table, Card, Button, Modal, Form, Input, Space, message } = antd;
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState('');
+  const [form] = Form.useForm();
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState('create');
+  const [toDelete, setToDelete] = useState(null);
+  const [openDelete, setOpenDelete] = useState(false);
+
+  function cargar(){
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(res => {
+        try{
+          let arr = (typeof res==='string')? JSON.parse(res):res;
+          if (!Array.isArray(arr)) arr = [];
+          setData(arr.map((r,i)=>({key:r.id || r.id_cliente || i, ...r})));
+        }catch(_){ Modal.error({title:'Error',content:'Respuesta inválida del servidor.'}); }
+        finally{ setLoading(false); }
+      })
+      .withFailureHandler(err => { setLoading(false); Modal.error({title:'Error', content:String((err&&err.message)||err)}); })
+      .listarClientes();
+  }
+  useEffect(()=>{ cargar(); }, []);
+
+  function abrirNuevo(){ setMode('create'); form.resetFields(); setOpen(true); }
+  function abrirEditar(rec){ setMode('edit'); form.setFieldsValue({ id_cliente: rec.id_cliente, nombre: rec.nombre||'' }); setOpen(true); }
+  function abrirEliminar(rec){ setToDelete(rec); setOpenDelete(true); }
+
+  function onSubmit(){
+    form.validateFields().then(values => {
+      setLoading(true);
+      const runner = (mode==='create')? 'crearCliente' : 'actualizarCliente';
+      google.script.run.withSuccessHandler(res => {
+        setLoading(false);
+        try{
+          const r = (typeof res==='string')? JSON.parse(res):res;
+          if (r && (r.ok || r.titulo)) { message.success(mode==='create'?'Cliente creado':'Cliente actualizado'); setOpen(false); cargar(); }
+          else Modal.error({title:'Error', content:(r&&r.message)||'Operación fallida'});
+        }catch(_){ Modal.error({title:'Error',content:'Respuesta inválida'}); }
+      }).withFailureHandler(err => { setLoading(false); Modal.error({title:'Error', content:String((err&&err.message)||err)}); })[runner](JSON.stringify(values));
+    });
+  }
+
+  function confirmarEliminar(){
+    if (!toDelete) return;
+    setLoading(true);
+    google.script.run.withSuccessHandler(res => {
+      setLoading(false);
+      try{
+        const r = (typeof res==='string')? JSON.parse(res):res;
+        if (r && (r.ok || r.titulo)) { message.success('Cliente eliminado'); setOpenDelete(false); setToDelete(null); cargar(); }
+        else Modal.error({title:'Error', content:(r&&r.message)||'No se pudo eliminar'});
+      }catch(_){ Modal.error({title:'Error', content:'Respuesta inválida'}); }
+    }).withFailureHandler(err => { setLoading(false); Modal.error({title:'Error', content:String((err&&err.message)||err)}); }).eliminarCliente(toDelete.id_cliente);
+  }
+
+  const filtered = data.filter(r => !q || String(r.nombre||'').toLowerCase().includes(q.toLowerCase()));
+
+  const columns = [
+    { title:'ID', dataIndex:'id_cliente', key:'id_cliente', width:100 },
+    { title:'Nombre', dataIndex:'nombre', key:'nombre' },
+    { title:'', key:'acc', width:92, align:'center', render:(_,rec)=>(<Space direction="vertical" size={4}>
+        <Button size="small" onClick={()=>abrirEditar(rec)} icon={<icons.EditOutlined />}>Editar</Button>
+        <Button size="small" type="text" danger onClick={()=>abrirEliminar(rec)} icon={<icons.DeleteOutlined />}>Eliminar</Button>
+      </Space>) }
+  ];
+
+  return (
+    <Card title="Clientes" extra={(<Space>
+      <Input placeholder="Buscar por nombre..." allowClear style={{width:240}} value={q} onChange={e=>setQ(e.target.value)} />
+      <Button icon={<icons.ReloadOutlined />} onClick={cargar}>Refrescar</Button>
+      <Button type="primary" icon={<icons.PlusOutlined />} onClick={abrirNuevo}>Nuevo</Button>
+    </Space>)}>
+      <Table dataSource={filtered} columns={columns} loading={loading} pagination={{pageSize:8}} />
+      
+      <Modal visible={open} onCancel={()=>setOpen(false)} onOk={onSubmit}
+             title={mode==='create'?'Nuevo Cliente':'Editar Cliente'} okText={mode==='create'?'Crear':'Guardar'} confirmLoading={loading}>
+        <Form form={form} layout="vertical">
+          <Form.Item name="id_cliente" hidden><Input /></Form.Item>
+          <Form.Item name="nombre" label="Nombre" rules={[{required:true,message:'Ingrese el nombre'}]}>
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal visible={openDelete} onCancel={()=>{setOpenDelete(false);setToDelete(null);}} okType="danger" okText="Eliminar" onOk={confirmarEliminar}>
+        <p>¿Eliminar al cliente <b>{toDelete?toDelete.nombre:''}</b>?</p>
+      </Modal>
+    </Card>
+  );
+}
+// </script>

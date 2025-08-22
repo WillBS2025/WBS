@@ -4,7 +4,7 @@ function env_(){
             ID_DATABASE: "1ZjGMCSJ48z498MZ0KsKQiKrOjbcRFeBaQl0I5F1fb0w",
 
             // HOJA REGISTRO USUARIOS
-            SH_REGISTRO_USUARIOS: "registro usuarios",
+            SH_REGISTRO_USUARIOS: "usuarios",
 
             // HOJA PRODUCTOS
             SH_PRODUCTOS: "productos",
@@ -17,6 +17,12 @@ function env_(){
 
             // HOJA COMPRAS DE SUMINISTROS
             SH_COMPRAS_SUMINISTROS: "ComprasSuministros",
+
+            // HOJA EMPLEADOS
+            SH_EMPLEADOS: "empleados",
+
+            // HOJA CLIENTES
+            SH_CLIENTES: "clientes",
 
             // HOJA SUCURSALES
             SH_SUCURSALES: "sucursales",
