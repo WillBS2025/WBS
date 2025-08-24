@@ -1,7 +1,7 @@
 //<script type="text/jsx">
 function Gastos() {
   const { useState, useEffect, useMemo, useRef } = React;
-  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, Row, Col, Tag, message, Tooltip, Divider } = antd;
+  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, Row, Col, Tag, message, Tooltip, Divider, Collapse } = antd;
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -24,7 +24,6 @@ function Gastos() {
 
   const initialMontoRef = useRef(null);
 
-  // Paleta suave y consistente
   const PALETTE = ['#7FB3FF','#9FD3FF','#B8E1C6','#FFD6A5','#F9A8D4','#C3B8FF','#BDE0FE','#CFF5E7','#FFE3B3','#D0BCFF','#B0BEC5','#C6E2FF'];
 
   // --------- UTILIDADES ---------
@@ -194,7 +193,7 @@ function Gastos() {
               if (r && r.ok){
                 message.success('Gasto creado');
                 setModalOpen(false);
-                cargar(); // <-- también refresca dashboards
+                cargar();
               }else{
                 Modal.error({ title:'NO SE PUDO CREAR', content: (r && r.message) || 'Error desconocido' });
               }
@@ -217,7 +216,7 @@ function Gastos() {
               if (r && r.ok){
                 message.success('Gasto actualizado');
                 setModalOpen(false);
-                cargar(); // <-- también refresca dashboards
+                cargar();
               }else{
                 Modal.error({ title:'NO SE PUDO ACTUALIZAR', content: (r && r.message) || 'Error desconocido' });
               }
@@ -250,7 +249,7 @@ function Gastos() {
               var r = typeof res === 'string' ? JSON.parse(res) : res;
               if (r && r.ok){
                 message.success('Gasto eliminado');
-                cargar(); // <-- también refresca dashboards
+                cargar();
               }else{
                 Modal.error({ title:'NO SE PUDO ELIMINAR', content: (r && r.message) || 'Error desconocido' });
               }
@@ -280,7 +279,7 @@ function Gastos() {
     if (v === initialMontoRef.current) form.setFieldsValue({ monto: null });
   }
 
-  // --------- DASHBOARDS (todo deriva de "data") ---------
+  // --------- DASHBOARDS ---------
   const {
     total, count, avg,
     byCategoria, bySucursal, byMetodo,
@@ -307,7 +306,6 @@ function Gastos() {
 
     const avg = count > 0 ? (total / count) : 0;
 
-    // Donut (categorías): top 6 + "Otros"
     const entriesCat = Object.entries(byCategoria).sort((a,b)=>b[1]-a[1]);
     let donutData = entriesCat.slice(0,6).map(([label,value],i)=>({ label, value, color: PALETTE[i % PALETTE.length] }));
     if (entriesCat.length > 6) {
@@ -315,15 +313,13 @@ function Gastos() {
       donutData.push({ label: 'Otros', value: otros, color: '#E5E7EB' });
     }
 
-    // Barras por sucursal: top 6
     const barsSucursal = Object.entries(bySucursal)
       .sort((a,b)=>b[1]-a[1])
       .slice(0,6)
       .map(([label,value],i)=>({ label, value, color: PALETTE[i % PALETTE.length] }));
 
-    // Serie diaria del mes seleccionado
     let y = Number(String(mesYear).slice(0,4));
-    let m = Number(String(mesYear).slice(5,7)); // 1-12
+    let m = Number(String(mesYear).slice(5,7));
     const daysInMonth = (!isNaN(y) && !isNaN(m)) ? new Date(y, m, 0).getDate() : 30;
     const daily = new Array(daysInMonth).fill(0);
     items.forEach(r=>{
@@ -341,7 +337,7 @@ function Gastos() {
     return { total, count, avg, byCategoria, bySucursal, byMetodo, donutData, barsSucursal, dailySeries, daysInMonth };
   }, [data, mesYear]);
 
-  // --------- MINI COMPONENTES (sin dependencias) ---------
+  // --------- MINI COMPONENTES ---------
   function useCountUp(value, duration=800){
     const [display, setDisplay] = useState(0);
     const prevRef = useRef(0);
@@ -411,9 +407,7 @@ function Gastos() {
             bodyStyle={{ padding: 12 }}>
         <div style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:12, alignItems:'center' }}>
           <svg width={160} height={160} viewBox="0 0 150 150" className="fade-in" style={{transform:'scale(1)', transition:'transform .4s ease'}}>
-            {/* Fondo donut */}
             <circle cx={cx} cy={cy} r={r} fill="none" stroke="#F1F5F9" strokeWidth={strokeW} />
-            {/* Slices */}
             {slices.map((s,i)=>(
               <path key={i}
                 d={arcPath(cx,cy,r,s.start,s.end)}
@@ -426,7 +420,6 @@ function Gastos() {
                 onMouseLeave={e=> e.currentTarget.style.opacity = 1}
               />
             ))}
-            {/* Centro */}
             <circle cx={cx} cy={cy} r={r- strokeW/2 - 4} fill="#FFFFFF"/>
             <text x={cx} y={cy-4} textAnchor="middle" style={{fontSize:12, fill:'#64748B'}}>Total</text>
             <text x={cx} y={cy+14} textAnchor="middle" style={{fontSize:14, fontWeight:700}}>{formatHNL(total)}</text>
@@ -498,13 +491,8 @@ function Gastos() {
         {data.length === 0 ? <div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos</div> : (
           <svg width={W} height={H} className="fade-in">
             <path d={path} fill="none" stroke="#7FB3FF" strokeWidth="2" />
-            {/* Relleno sutil */}
-            <path d={`${path} L ${pad + (days-1)*stepX} ${H-pad} L ${pad} ${H-pad} Z`}
-                  fill="#7FB3FF22" />
-            {/* Puntos suaves */}
-            {points.map((p,i)=>(
-              <circle key={i} cx={p[0]} cy={p[1]} r="2" fill="#7FB3FF" />
-            ))}
+            <path d={`${path} L ${pad + (days-1)*stepX} ${H-pad} L ${pad} ${H-pad} Z`} fill="#7FB3FF22" />
+            {points.map((p,i)=>(<circle key={i} cx={p[0]} cy={p[1]} r="2" fill="#7FB3FF" />))}
           </svg>
         )}
         <div style={{ fontSize:12, color:'#64748B', marginTop:6 }}>
@@ -514,7 +502,37 @@ function Gastos() {
     );
   }
 
-  // --------- COLUMNAS TABLA (original) ---------
+  // === Filtros como componente reutilizable ===
+  function Filtros({ style }) {
+    return (
+      <Row gutter={[12,12]} style={{ marginBottom: 12, ...(style||{}) }}>
+        <Col xs={24} md={6}>
+          <label className="block text-xs text-gray-500 mb-1">Mes</label>
+          <input type="month" className="w-full border rounded px-2 py-1"
+                 value={mesYear} onChange={e=>setMesYear(e.target.value)} />
+        </Col>
+        <Col xs={24} md={6}>
+          <label className="block text-xs text-gray-500 mb-1">Categoría</label>
+          <Select allowClear placeholder="Todas" className="w-full"
+                  value={fCategoria} onChange={setFCategoria}
+                  options={CATEGORIAS.map(function(c){ return { value:c, label:c }; })} />
+        </Col>
+        <Col xs={24} md={6}>
+          <label className="block text-xs text-gray-500 mb-1">Sucursal</label>
+          <Select allowClear placeholder="Todas" className="w-full"
+                  value={fSucursal} onChange={setFSucursal}
+                  options={(sucursales||[]).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })} />
+        </Col>
+        <Col xs={24} md={6}>
+          <label className="block text-xs text-gray-500 mb-1">Buscar</label>
+          <Input.Search placeholder="Texto libre..." value={q}
+                        onChange={e=>setQ(e.target.value)} onSearch={cargar} allowClear />
+        </Col>
+      </Row>
+    );
+  }
+
+  // --------- COLUMNAS TABLA ---------
   const columns = [
     { title: 'Fecha', dataIndex: 'fecha', key: 'fecha',
       render: function(v){
@@ -569,34 +587,11 @@ function Gastos() {
         .bar { will-change: width; }
       `}</style>
 
-      {/* Filtros */}
-      <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
-        <Col xs={24} md={6}>
-          <label className="block text-xs text-gray-500 mb-1">Mes</label>
-          <input type="month" className="w-full border rounded px-2 py-1"
-                 value={mesYear} onChange={e=>setMesYear(e.target.value)} />
-        </Col>
-        <Col xs={24} md={6}>
-          <label className="block text-xs text-gray-500 mb-1">Categoría</label>
-          <Select allowClear placeholder="Todas" className="w-full"
-                  value={fCategoria} onChange={setFCategoria}
-                  options={CATEGORIAS.map(function(c){ return { value:c, label:c }; })} />
-        </Col>
-        <Col xs={24} md={6}>
-          <label className="block text-xs text-gray-500 mb-1">Sucursal</label>
-          <Select allowClear placeholder="Todas" className="w-full"
-                  value={fSucursal} onChange={setFSucursal}
-                  options={(sucursales||[]).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })} />
-        </Col>
-        <Col xs={24} md={6}>
-          <label className="block text-xs text-gray-500 mb-1">Buscar</label>
-          <Input.Search placeholder="Texto libre..." value={q}
-                        onChange={e=>setQ(e.target.value)} onSearch={cargar} allowClear />
-        </Col>
-      </Row>
+      {/* Filtros originales: ocultos (se conservan) */}
+      <Filtros style={{ display:'none' }} />
 
-      {/* Tarjeta original (la conservo tal cual) */}
-      <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
+      {/* Tarjeta "Total del período": OCULTA (se conserva para no romper nada) */}
+      <Row gutter={[12,12]} style={{ marginBottom: 12, display:'none' }}>
         <Col xs={24} md={8}>
           <div className="p-3 bg-gray-50 rounded border">
             <div className="text-gray-500 text-xs">Total del período</div>
@@ -605,7 +600,7 @@ function Gastos() {
         </Col>
       </Row>
 
-      {/* KPIs nuevos */}
+      {/* KPIs y gráficos (sin cambios) */}
       <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
         <Col xs={24} sm={8}>
           <KPI title="Total" value={total} formatter={formatHNL}
@@ -621,7 +616,6 @@ function Gastos() {
         </Col>
       </Row>
 
-      {/* Gráficos principales */}
       <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
         <Col xs={24} md={12}>
           <DonutChart data={donutData} total={total} onSelect={(label)=> setFCategoria(label)} />
@@ -635,7 +629,6 @@ function Gastos() {
         </Col>
       </Row>
 
-      {/* Tendencia */}
       <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
         <Col xs={24} md={12}>
           <Sparkline data={dailySeries} days={daysInMonth} />
@@ -657,6 +650,13 @@ function Gastos() {
           </Card>
         </Col>
       </Row>
+
+      {/* === Filtros arriba de la TABLA con collapse === */}
+      <Collapse ghost defaultActiveKey={['1']} style={{ marginBottom: 12 }}>
+        <Collapse.Panel header="Filtros" key="1">
+          <Filtros />
+        </Collapse.Panel>
+      </Collapse>
 
       {/* Tabla */}
       <Table dataSource={data} columns={columns} loading={loading}
