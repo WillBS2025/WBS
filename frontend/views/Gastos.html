@@ -1,7 +1,7 @@
 //<script type="text/jsx">
 function Gastos() {
-  const { useState, useEffect } = React;
-  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, Row, Col, Tag, message } = antd;
+  const { useState, useEffect, useMemo, useRef } = React;
+  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, Row, Col, Tag, message, Tooltip, Divider } = antd;
 
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -22,8 +22,12 @@ function Gastos() {
   const CATEGORIAS = ['Luz','Agua','Internet','Salarios','Alquiler','Insumos','Limpieza','Mantenimiento','Publicidad','Impuestos','Servicios Profesionales','Otros'];
   const METODOS = ['Efectivo','Tarjeta','Transferencia','Cheque','Otro'];
 
-  const initialMontoRef = React.useRef(null);
+  const initialMontoRef = useRef(null);
 
+  // Paleta suave y consistente
+  const PALETTE = ['#7FB3FF','#9FD3FF','#B8E1C6','#FFD6A5','#F9A8D4','#C3B8FF','#BDE0FE','#CFF5E7','#FFE3B3','#D0BCFF','#B0BEC5','#C6E2FF'];
+
+  // --------- UTILIDADES ---------
   function formatHNL(value) {
     var n = Number(value);
     if (!isFinite(n)) n = 0;
@@ -43,7 +47,16 @@ function Gastos() {
     if (!m) return null;
     return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
   }
+  function safeDate(v){
+    try{ return (v && typeof v === 'string') ? new Date(v) : (v instanceof Date ? v : new Date(v)); }catch(_){ return null; }
+  }
+  function formatPercent(v, total){
+    const t = Number(total) || 0;
+    if (t <= 0) return '0%';
+    return Math.round((Number(v||0)*100)/t) + '%';
+  }
 
+  // --------- CARGA DE DATOS ---------
   function cargar() {
     setLoading(true);
     var m = 0, y = 0;
@@ -100,6 +113,7 @@ function Gastos() {
 
   useEffect(function(){ cargar(); }, [mesYear, fCategoria, fSucursal]);
 
+  // --------- MODALES / CRUD ---------
   function abrirNuevo(){
     setModalMode('create');
     setEditing(null);
@@ -180,7 +194,7 @@ function Gastos() {
               if (r && r.ok){
                 message.success('Gasto creado');
                 setModalOpen(false);
-                cargar();
+                cargar(); // <-- también refresca dashboards
               }else{
                 Modal.error({ title:'NO SE PUDO CREAR', content: (r && r.message) || 'Error desconocido' });
               }
@@ -203,7 +217,7 @@ function Gastos() {
               if (r && r.ok){
                 message.success('Gasto actualizado');
                 setModalOpen(false);
-                cargar();
+                cargar(); // <-- también refresca dashboards
               }else{
                 Modal.error({ title:'NO SE PUDO ACTUALIZAR', content: (r && r.message) || 'Error desconocido' });
               }
@@ -236,7 +250,7 @@ function Gastos() {
               var r = typeof res === 'string' ? JSON.parse(res) : res;
               if (r && r.ok){
                 message.success('Gasto eliminado');
-                cargar();
+                cargar(); // <-- también refresca dashboards
               }else{
                 Modal.error({ title:'NO SE PUDO ELIMINAR', content: (r && r.message) || 'Error desconocido' });
               }
@@ -261,13 +275,246 @@ function Gastos() {
     setTimeout(cargar, 0);
   }
 
-  var total = (data || []).reduce(function(acc, r){ return acc + Number(r.monto || 0); }, 0);
-
   function handleMontoFocus() {
     var v = form.getFieldValue('monto');
     if (v === initialMontoRef.current) form.setFieldsValue({ monto: null });
   }
 
+  // --------- DASHBOARDS (todo deriva de "data") ---------
+  const {
+    total, count, avg,
+    byCategoria, bySucursal, byMetodo,
+    donutData, barsSucursal,
+    dailySeries, daysInMonth
+  } = useMemo(() => {
+    const items = Array.isArray(data) ? data : [];
+    let total = 0;
+    let count = items.length;
+    const byCategoria = {};
+    const bySucursal = {};
+    const byMetodo = {};
+
+    items.forEach(r => {
+      const monto = Number(r.monto || 0);
+      total += monto;
+      const cat = (r.categoria || 'Sin categoría');
+      const suc = (r.nombreSucursal || 'Sin sucursal');
+      const met = (r.metodoPago || 'Sin método');
+      byCategoria[cat] = (byCategoria[cat] || 0) + monto;
+      bySucursal[suc] = (bySucursal[suc] || 0) + monto;
+      byMetodo[met] = (byMetodo[met] || 0) + monto;
+    });
+
+    const avg = count > 0 ? (total / count) : 0;
+
+    // Donut (categorías): top 6 + "Otros"
+    const entriesCat = Object.entries(byCategoria).sort((a,b)=>b[1]-a[1]);
+    let donutData = entriesCat.slice(0,6).map(([label,value],i)=>({ label, value, color: PALETTE[i % PALETTE.length] }));
+    if (entriesCat.length > 6) {
+      const otros = entriesCat.slice(6).reduce((acc, [,v]) => acc+v, 0);
+      donutData.push({ label: 'Otros', value: otros, color: '#E5E7EB' });
+    }
+
+    // Barras por sucursal: top 6
+    const barsSucursal = Object.entries(bySucursal)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,6)
+      .map(([label,value],i)=>({ label, value, color: PALETTE[i % PALETTE.length] }));
+
+    // Serie diaria del mes seleccionado
+    let y = Number(String(mesYear).slice(0,4));
+    let m = Number(String(mesYear).slice(5,7)); // 1-12
+    const daysInMonth = (!isNaN(y) && !isNaN(m)) ? new Date(y, m, 0).getDate() : 30;
+    const daily = new Array(daysInMonth).fill(0);
+    items.forEach(r=>{
+      const d = safeDate(r.fecha);
+      if (!d) return;
+      const ry = d.getFullYear();
+      const rm = d.getMonth() + 1;
+      if (ry === y && rm === m) {
+        const day = d.getDate();
+        daily[day-1] += Number(r.monto || 0);
+      }
+    });
+    const dailySeries = daily.map((v,idx)=>({ x: idx+1, y: v }));
+
+    return { total, count, avg, byCategoria, bySucursal, byMetodo, donutData, barsSucursal, dailySeries, daysInMonth };
+  }, [data, mesYear]);
+
+  // --------- MINI COMPONENTES (sin dependencias) ---------
+  function useCountUp(value, duration=800){
+    const [display, setDisplay] = useState(0);
+    const prevRef = useRef(0);
+    useEffect(()=>{
+      const start = performance.now();
+      const from = prevRef.current;
+      const to = Number(value||0);
+      let raf;
+      function tick(t){
+        const p = Math.min(1, (t - start)/duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setDisplay(from + (to - from) * eased);
+        if (p < 1) raf = requestAnimationFrame(tick);
+      }
+      raf = requestAnimationFrame(tick);
+      prevRef.current = to;
+      return ()=> cancelAnimationFrame(raf);
+    }, [value, duration]);
+    return display;
+  }
+
+  function KPI({ title, value, formatter, icon, accent='#EEF2FF' }){
+    const v = useCountUp(value);
+    return (
+      <Card className="fade-in" bodyStyle={{ padding: 14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ width:38, height:38, borderRadius:12, background:accent, display:'grid', placeItems:'center' }}>
+            {icon}
+          </div>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:12, color:'#64748B' }}>{title}</div>
+            <div style={{ fontSize:22, fontWeight:700 }}>{formatter ? formatter(v) : v.toFixed(0)}</div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  function DonutChart({ data, total, onSelect }){
+    if (!data || data.length === 0 || total <= 0){
+      return <Card bodyStyle={{padding:14}}><div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos para este período</div></Card>;
+    }
+    const size = 140, cx = 75, cy = 75, r = 50, strokeW = 18;
+    let startAngle = 0;
+    const slices = data.map((d,i)=>{
+      const angle = (d.value/total) * 360;
+      const endAngle = startAngle + angle;
+      const out = { ...d, start: startAngle, end: endAngle };
+      startAngle = endAngle;
+      return out;
+    });
+
+    function polar(cx, cy, r, ang){
+      const rad = (ang - 90) * Math.PI/180;
+      return { x: cx + r*Math.cos(rad), y: cy + r*Math.sin(rad) };
+    }
+    function arcPath(cx, cy, r, start, end){
+      const s = polar(cx, cy, r, start);
+      const e = polar(cx, cy, r, end);
+      const large = (end - start) > 180 ? 1 : 0;
+      return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
+    }
+
+    return (
+      <Card title={<Space><icons.PieChartOutlined /> <span>Distribución por categoría</span></Space>}
+            extra={fCategoria ? <Tag color="blue" onClick={()=>setFCategoria(undefined)} style={{cursor:'pointer'}}>Quitar filtro</Tag> : null}
+            bodyStyle={{ padding: 12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:12, alignItems:'center' }}>
+          <svg width={160} height={160} viewBox="0 0 150 150" className="fade-in" style={{transform:'scale(1)', transition:'transform .4s ease'}}>
+            {/* Fondo donut */}
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke="#F1F5F9" strokeWidth={strokeW} />
+            {/* Slices */}
+            {slices.map((s,i)=>(
+              <path key={i}
+                d={arcPath(cx,cy,r,s.start,s.end)}
+                stroke={s.color}
+                strokeWidth={strokeW}
+                fill="none"
+                style={{ cursor:'pointer', transition:'opacity .2s ease' }}
+                onClick={()=> onSelect && onSelect(s.label)}
+                onMouseEnter={e=> e.currentTarget.style.opacity = 0.85}
+                onMouseLeave={e=> e.currentTarget.style.opacity = 1}
+              />
+            ))}
+            {/* Centro */}
+            <circle cx={cx} cy={cy} r={r- strokeW/2 - 4} fill="#FFFFFF"/>
+            <text x={cx} y={cy-4} textAnchor="middle" style={{fontSize:12, fill:'#64748B'}}>Total</text>
+            <text x={cx} y={cy+14} textAnchor="middle" style={{fontSize:14, fontWeight:700}}>{formatHNL(total)}</text>
+          </svg>
+          <div style={{ display:'grid', gap:6 }}>
+            {data.map((d,i)=>(
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ width:10, height:10, borderRadius:3, background:d.color }} />
+                <div style={{ flex:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                  <Tooltip title="Filtrar por categoría">
+                    <a onClick={()=> onSelect && onSelect(d.label)}>{d.label}</a>
+                  </Tooltip>
+                </div>
+                <div style={{ width:80, textAlign:'right', color:'#475569' }}>{formatHNL(d.value)}</div>
+                <div style={{ width:48, textAlign:'right', color:'#64748B' }}>{formatPercent(d.value, total)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  function BarList({ data, onSelect, title, hint='Filtrar', icon }){
+    const max = data.reduce((a,b)=> Math.max(a, Number(b.value||0)), 0) || 1;
+    return (
+      <Card title={<Space>{icon}{title}</Space>}
+            extra={fSucursal ? <Tag color="blue" onClick={()=>setFSucursal(undefined)} style={{cursor:'pointer'}}>Quitar filtro</Tag> : null}
+            bodyStyle={{ padding: 12 }}>
+        <div className="fade-in" style={{ display:'grid', gap:8 }}>
+          {data.length === 0 ? <div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos</div> : null}
+          {data.map((d,i)=>(
+            <div key={i} style={{ display:'grid', gridTemplateColumns:'auto 80px', gap:10, alignItems:'center' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'16px 1fr', gap:8, alignItems:'center' }}>
+                <span style={{ width:10, height:10, borderRadius:3, background:d.color }} />
+                <div style={{ position:'relative' }}>
+                  <div style={{ fontSize:12, color:'#334155', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{d.label}</div>
+                  <Tooltip title={hint}>
+                    <div onClick={()=> onSelect && onSelect(d.label)}
+                         style={{ height:8, background:'#F1F5F9', borderRadius:999, cursor:'pointer' }}>
+                      <div className="bar" style={{
+                        width: (Math.max(3,(d.value/max)*100)).toFixed(2)+'%',
+                        height:'100%',
+                        borderRadius:999,
+                        background:`linear-gradient(90deg, ${d.color} 0%, ${d.color}CC 100%)`,
+                        transition:'width .8s ease'
+                      }} />
+                    </div>
+                  </Tooltip>
+                </div>
+              </div>
+              <div style={{ textAlign:'right', fontWeight:600 }}>{formatHNL(d.value)}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    );
+  }
+
+  function Sparkline({ data, days }){
+    const W = 340, H = 90, pad = 8;
+    const maxY = data.reduce((a,b)=>Math.max(a, b.y), 0) || 1;
+    const stepX = (W - pad*2) / Math.max(1, days - 1);
+    const scaleY = v => (H - pad) - ( (Number(v)/maxY) * (H - pad*2) );
+    const points = data.map((d,i)=> [pad + i*stepX, scaleY(d.y)] );
+    const path = points.map((p,i)=> (i===0? 'M':'L') + p[0].toFixed(2)+' '+p[1].toFixed(2)).join(' ');
+    return (
+      <Card title={<Space><icons.AreaChartOutlined /> Tendencia diaria</Space>} bodyStyle={{padding:12}}>
+        {data.length === 0 ? <div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos</div> : (
+          <svg width={W} height={H} className="fade-in">
+            <path d={path} fill="none" stroke="#7FB3FF" strokeWidth="2" />
+            {/* Relleno sutil */}
+            <path d={`${path} L ${pad + (days-1)*stepX} ${H-pad} L ${pad} ${H-pad} Z`}
+                  fill="#7FB3FF22" />
+            {/* Puntos suaves */}
+            {points.map((p,i)=>(
+              <circle key={i} cx={p[0]} cy={p[1]} r="2" fill="#7FB3FF" />
+            ))}
+          </svg>
+        )}
+        <div style={{ fontSize:12, color:'#64748B', marginTop:6 }}>
+          {days} días · Máximo diario {formatHNL(maxY)}
+        </div>
+      </Card>
+    );
+  }
+
+  // --------- COLUMNAS TABLA (original) ---------
   const columns = [
     { title: 'Fecha', dataIndex: 'fecha', key: 'fecha',
       render: function(v){
@@ -304,6 +551,7 @@ function Gastos() {
     }
   ];
 
+  // --------- RENDER ---------
   return (
     <Card
       title="Gastos"
@@ -315,6 +563,13 @@ function Gastos() {
         </Space>
       }
     >
+      <style>{`
+        .fade-in { animation: fadeIn .45s ease; }
+        @keyframes fadeIn { from { opacity:.0; transform: scale(.98) } to { opacity:1; transform: scale(1) } }
+        .bar { will-change: width; }
+      `}</style>
+
+      {/* Filtros */}
       <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
         <Col xs={24} md={6}>
           <label className="block text-xs text-gray-500 mb-1">Mes</label>
@@ -340,6 +595,7 @@ function Gastos() {
         </Col>
       </Row>
 
+      {/* Tarjeta original (la conservo tal cual) */}
       <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
         <Col xs={24} md={8}>
           <div className="p-3 bg-gray-50 rounded border">
@@ -349,9 +605,64 @@ function Gastos() {
         </Col>
       </Row>
 
+      {/* KPIs nuevos */}
+      <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
+        <Col xs={24} sm={8}>
+          <KPI title="Total" value={total} formatter={formatHNL}
+               icon={<icons.WalletOutlined />} accent="#EEF2FF" />
+        </Col>
+        <Col xs={24} sm={8}>
+          <KPI title="N.º de gastos" value={count}
+               icon={<icons.NumberOutlined />} accent="#E6FFFB" />
+        </Col>
+        <Col xs={24} sm={8}>
+          <KPI title="Promedio por gasto" value={avg} formatter={formatHNL}
+               icon={<icons.RiseOutlined />} accent="#F0FFF4" />
+        </Col>
+      </Row>
+
+      {/* Gráficos principales */}
+      <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
+        <Col xs={24} md={12}>
+          <DonutChart data={donutData} total={total} onSelect={(label)=> setFCategoria(label)} />
+        </Col>
+        <Col xs={24} md={12}>
+          <BarList data={barsSucursal}
+                   onSelect={(label)=> setFSucursal(label)}
+                   title="Gasto por sucursal"
+                   hint="Filtrar por sucursal"
+                   icon={<icons.BarChartOutlined />} />
+        </Col>
+      </Row>
+
+      {/* Tendencia */}
+      <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
+        <Col xs={24} md={12}>
+          <Sparkline data={dailySeries} days={daysInMonth} />
+        </Col>
+        <Col xs={24} md={12}>
+          <Card title={<Space><icons.ClusterOutlined /> Método de pago</Space>} bodyStyle={{padding:12}}>
+            {Object.keys(byMetodo).length === 0 ? <div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos</div> : (
+              <div style={{ display:'grid', gap:8 }}>
+                {Object.entries(byMetodo).map(([k,v],i)=>(
+                  <div key={k} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <span style={{ width:10, height:10, borderRadius:3, background:PALETTE[i % PALETTE.length] }} />
+                    <div style={{ flex:1 }}>{k}</div>
+                    <div style={{ width:80, textAlign:'right', fontWeight:600 }}>{formatHNL(v)}</div>
+                    <div style={{ width:48, textAlign:'right', color:'#64748B' }}>{formatPercent(v, total)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Tabla */}
       <Table dataSource={data} columns={columns} loading={loading}
              pagination={{ pageSize: 10 }} rowKey="id" />
 
+      {/* Modal */}
       <Modal
         visible={modalOpen}
         title={modalMode === 'create' ? 'Nuevo gasto' : 'Editar gasto'}
