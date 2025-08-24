@@ -335,7 +335,7 @@ function Suministros() {
   var kpiCom_gasto = sumBy(filtered, function(c){ return c.costoTotal; });
   var kpiCom_enUso = filtered.filter(function(c){ return (c.estado || estadoLote(c)) === 'EN_USO'; }).length;
 
-  // KPI UI
+  // KPI UI (mismo patrón visual que Sucursales/Servicios)
   function useCountUp(value, duration=700){
     const [display, setDisplay] = useState(0);
     const prevRef = useRef(0);
@@ -356,14 +356,12 @@ function Suministros() {
     }, [value, duration]);
     return display;
   }
-  function KPI({ title, value, money, accent='#F8FAFC' }){
+  function KPI({ title, value, money, accent='#e0eaff' }){
     const v = useCountUp(value);
     return (
-      <Card size="small" bodyStyle={{ padding: 12 }}>
-        <div style={{ fontSize:12, color:'#64748B' }}>{title}</div>
-        <div style={{ fontSize:22, fontWeight:700 }}>
-          {money ? formatHNL(v) : Math.round(v)}
-        </div>
+      <Card bodyStyle={{ padding: 14 }} className="sum-kpi fade-in">
+        <div className="sum-kpi-sub">{title}</div>
+        <div className="sum-kpi-val">{money ? formatHNL(v) : Math.round(Number(v))}</div>
       </Card>
     );
   }
@@ -716,382 +714,420 @@ function Suministros() {
   }
   function resetFiltrosCatalogo(){ setQCat(''); setFCatCategoria(undefined); setFCatUnidadBase(undefined); setFCatConsumo(undefined); }
 
-  /********************* UI *********************/
+  /********************* UI (Diseño estilo Sucursales) *********************/
   return (
-    <Card
-      title="Suministros"
-      extra={
-        <Space wrap>
-          <Button onClick={cargarTodo} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
-          {/* NUEVO: Orden solicitado */}
-          <Button type="primary" onClick={function(){ abrirNuevoSuministro(false); }} icon={<icons.PlusOutlined />}>Nuevo suministro</Button>
-          <Button onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Registrar compra</Button>
-        </Space>
-      }
-    >
-      <style>{`
-        .tbl-center { max-width: 1200px; margin: 0 auto; }
-        .month-inline { display:flex; gap:8px; align-items:center; } /* NUEVO */
-      `}</style>
+    <div className="suministros-wrap">
+      <Card
+        title={<div className="sum-hero-title"><span className="sum-spark"></span>Suministros</div>}
+        extra={
+          <Space wrap>
+            <Button onClick={cargarTodo} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
+            <Button type="primary" onClick={function(){ abrirNuevoSuministro(false); }} icon={<icons.PlusOutlined />}>Nuevo suministro</Button>
+            <Button onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Registrar compra</Button>
+          </Space>
+        }
+      >
+        <style>{`
+          .fade-in { animation: fadeIn .45s ease; }
+          @keyframes fadeIn { from { opacity:.0; transform: translateY(4px) } to { opacity:1; transform: translateY(0) } }
 
-      <Tabs defaultActiveKey="catalogo">
-        <Tabs.TabPane tab="Catálogo" key="catalogo">
-          {/* === DASHBOARDS (Catálogo) === */}
-          <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
-            <Col xs={24} sm={8}><KPI title="Total suministros" value={kpiCat_total} /></Col>
-            <Col xs={24} sm={8}><KPI title="En uso" value={kpiCat_enUso} /></Col>
-            <Col xs={24} sm={8}><KPI title="Nunca comprados" value={kpiCat_nuncaComprados} /></Col>
-          </Row>
+          /* Hero título con spark */
+          .sum-hero-title{ position:relative; padding-left:12px; font-weight:800; }
+          .sum-spark{
+            position:absolute; left:0; top:6px; width:6px; height:22px; border-radius:3px;
+            background: linear-gradient(180deg,#60a5fa,#a78bfa,#34d399);
+            animation: sumSpark 2.6s ease-in-out infinite;
+          }
+          @keyframes sumSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
 
-          {/* === FILTROS CATÁLOGO === */}
-          <Row gutter={[12,12]} align="bottom" style={{ marginBottom: 12 }}>
-            <Col xs={24} md={8}>
-              <label style={{ display:'block', marginBottom:4 }}>Buscar por nombre</label>
-              <Input
-                allowClear
-                placeholder="Papel higiénico, Café…"
-                value={qCat}
-                onChange={function(e){ setQCat(e.target.value); }}
-                addonAfter={<Button size="small" onClick={resetFiltrosCatalogo}>Limpiar</Button>}
+          /* KPIs estilo tiles (como Sucursales/Servicios) */
+          .sum-kpi{ border-radius:14px; background: linear-gradient(135deg,#e0eaff,#e9fff6); box-shadow: 0 2px 10px rgba(15,23,42,.06); }
+          .sum-kpi-sub{ font-size:12px; color:#6b7280 }
+          .sum-kpi-val{ font-size:26px; font-weight:800; color:#0f172a }
+
+          /* Centrado de tablas y look & feel pastel */
+          .tbl-center { max-width: 1200px; margin: 0 auto; }            /* (mantengo tu clase existente) */
+          .month-inline { display:flex; gap:8px; align-items:center; }  /* (mantengo tu clase existente) */
+
+          .suministros-wrap .sum-table .ant-table{ border-radius:14px; overflow:hidden; }
+          .suministros-wrap .sum-table .ant-table-thead > tr > th{
+            background:#f8fafc !important; border-bottom:0; color:#334155; font-weight:700;
+          }
+          .suministros-wrap .sum-table .ant-table-tbody > tr{
+            transition: transform .15s ease, box-shadow .15s ease, background .2s;
+            animation: sumFadeUp .35s ease both;
+          }
+          @keyframes sumFadeUp{ from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:translateY(0) } }
+          .suministros-wrap .sum-table .ant-table-tbody > tr:hover{
+            transform: scale(1.01); box-shadow: 0 10px 24px rgba(2,6,23,.08);
+          }
+          .suministros-wrap .sum-table .ant-table-tbody > tr:nth-child(odd) td{ background:#fcfdff; }
+
+          /* Estado fila bloqueada (ya tenías rowClassName) */
+          .suministros-wrap .row-bloqueado td{ background:#f9fafb !important; color:#64748B; }
+        `}</style>
+
+        <Tabs defaultActiveKey="catalogo">
+          <Tabs.TabPane tab="Catálogo" key="catalogo">
+            {/* === DASHBOARDS (Catálogo) === */}
+            <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+              <Col xs={24} sm={8}><KPI title="Total suministros" value={kpiCat_total} /></Col>
+              <Col xs={24} sm={8}><KPI title="En uso" value={kpiCat_enUso} /></Col>
+              <Col xs={24} sm={8}><KPI title="Nunca comprados" value={kpiCat_nuncaComprados} /></Col>
+            </Row>
+
+            {/* === FILTROS CATÁLOGO === */}
+            <Row gutter={[12,12]} align="bottom" style={{ marginBottom: 12 }}>
+              <Col xs={24} md={8}>
+                <label style={{ display:'block', marginBottom:4 }}>Buscar por nombre</label>
+                <Input
+                  allowClear
+                  placeholder="Papel higiénico, Café…"
+                  value={qCat}
+                  onChange={function(e){ setQCat(e.target.value); }}
+                  addonAfter={<Button size="small" onClick={resetFiltrosCatalogo}>Limpiar</Button>}
+                />
+              </Col>
+              <Col xs={12} md={5}>
+                <label style={{ display:'block', marginBottom:4 }}>Categoría</label>
+                <Select allowClear placeholder="Todas"
+                        value={fCatCategoria} onChange={function(v){ setFCatCategoria(v); }}
+                        style={{ width:'100%' }}
+                        options={Array.from(new Set(catCategorias)).map(function(c){ return { value:c, label:c }; })} />
+              </Col>
+              <Col xs={12} md={5}>
+                <label style={{ display:'block', marginBottom:4 }}>Unidad base</label>
+                <Select allowClear placeholder="Todas"
+                        value={fCatUnidadBase} onChange={function(v){ setFCatUnidadBase(v); }}
+                        style={{ width:'100%' }}
+                        options={Array.from(new Set(catUnidades)).map(function(u){ return { value:u, label:u }; })} />
+              </Col>
+              <Col xs={12} md={6}>
+                <label style={{ display:'block', marginBottom:4 }}>Estado consumo</label>
+                <Select allowClear placeholder="Todos"
+                        value={fCatConsumo} onChange={function(v){ setFCatConsumo(v); }}
+                        style={{ width:'100%' }}
+                        options={[
+                          { value:'NUEVO', label:'Nuevo' },
+                          { value:'EN_USO', label:'En uso' },
+                          { value:'AGOTADO', label:'Agotado' },
+                          { value:'SIN_COMPRAS', label:'Sin compras' }
+                        ]} />
+              </Col>
+            </Row>
+
+            {/* === TABLA CATÁLOGO (CENTRADA) === */}
+            <div className="tbl-center">
+              <Table
+                className="sum-table"
+                dataSource={catalogoFiltered}
+                columns={columnsCatalogo}
+                loading={loading && compras.length===0}
+                rowKey={function(r){ return r.idSuministro; }}
+                scroll={{ x: true }}
+                pagination={{ pageSize: 10 }}
               />
-            </Col>
-            <Col xs={12} md={5}>
-              <label style={{ display:'block', marginBottom:4 }}>Categoría</label>
-              <Select allowClear placeholder="Todas"
-                      value={fCatCategoria} onChange={function(v){ setFCatCategoria(v); }}
-                      style={{ width:'100%' }}
-                      options={Array.from(new Set(catCategorias)).map(function(c){ return { value:c, label:c }; })} />
-            </Col>
-            <Col xs={12} md={5}>
-              <label style={{ display:'block', marginBottom:4 }}>Unidad base</label>
-              <Select allowClear placeholder="Todas"
-                      value={fCatUnidadBase} onChange={function(v){ setFCatUnidadBase(v); }}
-                      style={{ width:'100%' }}
-                      options={Array.from(new Set(catUnidades)).map(function(u){ return { value:u, label:u }; })} />
-            </Col>
-            <Col xs={12} md={6}>
-              <label style={{ display:'block', marginBottom:4 }}>Estado consumo</label>
-              <Select allowClear placeholder="Todos"
-                      value={fCatConsumo} onChange={function(v){ setFCatConsumo(v); }}
-                      style={{ width:'100%' }}
-                      options={[
-                        { value:'NUEVO', label:'Nuevo' },
-                        { value:'EN_USO', label:'En uso' },
-                        { value:'AGOTADO', label:'Agotado' },
-                        { value:'SIN_COMPRAS', label:'Sin compras' }
-                      ]} />
-            </Col>
-          </Row>
+            </div>
+          </Tabs.TabPane>
 
-          {/* === TABLA CATÁLOGO (CENTRADA) === */}
-          <div className="tbl-center">
-            <Table
-              dataSource={catalogoFiltered}
-              columns={columnsCatalogo}
-              loading={loading && compras.length===0}
-              rowKey={function(r){ return r.idSuministro; }}
-              scroll={{ x: true }}
-              pagination={{ pageSize: 10 }}
-            />
-          </div>
-        </Tabs.TabPane>
+          <Tabs.TabPane tab="Compras" key="compras">
+            {/* === DASHBOARDS (Compras) === */}
+            <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+              <Col xs={24} sm={8}><KPI title="Lotes (filtrados)" value={kpiCom_lotes} /></Col>
+              <Col xs={24} sm={8}><KPI title="Gasto total" value={kpiCom_gasto} money /></Col>
+              <Col xs={24} sm={8}><KPI title="Lotes en uso" value={kpiCom_enUso} /></Col>
+            </Row>
 
-        <Tabs.TabPane tab="Compras" key="compras">
-          {/* === DASHBOARDS (Compras) === */}
-          <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
-            <Col xs={24} sm={8}><KPI title="Lotes (filtrados)" value={kpiCom_lotes} /></Col>
-            <Col xs={24} sm={8}><KPI title="Gasto total" value={kpiCom_gasto} money /></Col>
-            <Col xs={24} sm={8}><KPI title="Lotes en uso" value={kpiCom_enUso} /></Col>
-          </Row>
+            {/* === FILTROS COMPRAS (se mantiene igual) === */}
+            <Row gutter={[12,12]} align="bottom">
+              <Col xs={24} md={8}>
+                <label style={{ display:'block', marginBottom:4 }}>Buscar por suministro</label>
+                <Input
+                  allowClear
+                  placeholder="Papel higiénico, café…"
+                  value={q}
+                  onChange={function(e){ setQ(e.target.value); }}
+                  addonAfter={<Button size="small" onClick={resetFiltros}>Limpiar</Button>}
+                />
+              </Col>
+              <Col xs={12} md={8}>
+                <label style={{ display:'block', marginBottom:4 }}>Sucursal</label>
+                <Select options={sucOptions} allowClear placeholder="Todas"
+                        value={fSucursal} onChange={function(v){ setFSucursal(v); }} style={{ width:'100%' }} />
+              </Col>
+              <Col xs={12} md={8}>
+                <label style={{ display:'block', marginBottom:4 }}>Estado</label>
+                <Select allowClear placeholder="Todos" value={fEstado} onChange={function(v){ setFEstado(v); }}
+                        style={{ width:'100%' }}
+                        options={[
+                          { value:'NUEVO', label:'Nuevo' },
+                          { value:'EN_USO', label:'En uso' },
+                          { value:'COMPLETADO', label:'Completado' }
+                        ]}
+                />
+              </Col>
+            </Row>
 
-          {/* === FILTROS COMPRAS (se mantiene igual) === */}
-          <Row gutter={[12,12]} align="bottom">
-            <Col xs={24} md={8}>
-              <label style={{ display:'block', marginBottom:4 }}>Buscar por suministro</label>
-              <Input
-                allowClear
-                placeholder="Papel higiénico, café…"
-                value={q}
-                onChange={function(e){ setQ(e.target.value); }}
-                addonAfter={<Button size="small" onClick={resetFiltros}>Limpiar</Button>}
+            {/* NUEVO: fila adicional con filtro de Mes (sin tocar la fila anterior) */}
+            <Row gutter={[12,12]} align="bottom" style={{ marginTop: 8 }}>
+              <Col xs={24} md={8}>
+                <label style={{ display:'block', marginBottom:4 }}>Mes</label>
+                <div className="month-inline">
+                  <Input type="month" value={fMes} onChange={function(e){ setFMes(e.target.value); }} />
+                  <Button size="small" onClick={function(){ setFMes(''); }}>Todos</Button>
+                  <Button size="small" onClick={function(){ setFMes(currentMonthKey()); }}>Este mes</Button>
+                </div>
+              </Col>
+            </Row>
+
+            <Divider style={{ margin:'12px 0' }} />
+
+            {/* === TABLA COMPRAS (CENTRADA) === */}
+            <div className="tbl-center">
+              <Table
+                className="sum-table"
+                dataSource={filtered}
+                columns={columnsCompras}
+                loading={loading}
+                rowKey={function(r){ return r.idCompra; }}
+                scroll={{ x: true }}
+                pagination={{ pageSize: 10 }}
+                rowClassName={function(record){
+                  var e = record.estado || estadoLote(record);
+                  return e === 'COMPLETADO' ? 'row-bloqueado' : '';
+                }}
               />
-            </Col>
-            <Col xs={12} md={8}>
-              <label style={{ display:'block', marginBottom:4 }}>Sucursal</label>
-              <Select options={sucOptions} allowClear placeholder="Todas"
-                      value={fSucursal} onChange={function(v){ setFSucursal(v); }} style={{ width:'100%' }} />
-            </Col>
-            <Col xs={12} md={8}>
-              <label style={{ display:'block', marginBottom:4 }}>Estado</label>
-              <Select allowClear placeholder="Todos" value={fEstado} onChange={function(v){ setFEstado(v); }}
-                      style={{ width:'100%' }}
-                      options={[
-                        { value:'NUEVO', label:'Nuevo' },
-                        { value:'EN_USO', label:'En uso' },
-                        { value:'COMPLETADO', label:'Completado' }
-                      ]}
+            </div>
+          </Tabs.TabPane>
+        </Tabs>
+
+        {/* MODAL: NUEVA COMPRA */}
+        <Modal
+          centered
+          title={<Space><icons.PlusOutlined /><span>Registrar compra</span></Space>}
+          open={modalOpen} visible={modalOpen}
+          onCancel={function(){ setModalOpen(false); }}
+          onOk={function(){ form.submit(); }}
+          okText="Guardar" cancelText="Cancelar"
+          confirmLoading={loading}
+          destroyOnClose maskClosable={false} keyboard={false}
+        >
+          <Form form={form} layout="vertical" onFinish={onSubmit}>
+            <Form.Item label="Suministro" name="idSuministro"
+              rules={[{ required:true, message:'Seleccione un suministro' }]}
+              extra={<a onClick={function(){ setModalOpen(true); setSelectNewInCompra(true); setSumOpen(true); }}>¿No está? Agregar nuevo</a>}
+            >
+              <Select options={sumOptions} placeholder="Seleccione" showSearch optionFilterProp="label" />
+            </Form.Item>
+
+            <Form.Item label="Sucursal" name="sucursal"
+              rules={[{ required:true, message:'Seleccione una sucursal' }]}>
+              <Select options={sucOptions} placeholder="Seleccione" />
+            </Form.Item>
+
+            <Form.Item label="Fecha de compra" name="fechaCompra"
+              rules={[
+                { required:true, message:'Ingrese la fecha de compra' },
+                { validator: validateFechaNoFutura }
+              ]}>
+              <Input type="date" />
+            </Form.Item>
+
+            <Form.Item label="Fecha de inicio de uso" name="fechaInicioUso"
+              tooltip="Si empiezas a usar el mismo día, colócalo; si no, déjalo vacío."
+              rules={[
+                { validator: validateInicioVsCompra.bind(null, form.getFieldValue) }
+              ]}>
+              <Input type="date" />
+            </Form.Item>
+
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item
+                  label="Cantidad (unidad base)"
+                  name="cantidadUnidades"
+                  rules={[
+                    { required:true, message:'Ingrese la cantidad' },
+                    { validator: validateCantidadVsUnidadBase.bind(null, form.getFieldValue) }
+                  ]}
+                  dependencies={['idSuministro']}
+                >
+                  <InputNumber min={0} step={1} style={{ width:'100%' }} placeholder="Ej. 48" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item label="Costo total (L.)" name="costoTotal"
+                  rules={[{ required:true, message:'Ingrese el costo total' }]}>
+                  <InputNumber min={0} step={0.01} style={{ width:'100%' }} placeholder="Ej. 1200.00" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Form.Item label="Observaciones" name="observaciones">
+              <Input.TextArea rows={3} placeholder="Notas opcionales" />
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        {/* MODAL: EDITAR COMPRA */}
+        <Modal
+          centered
+          title={<Space><icons.EditOutlined /><span>Editar compra</span></Space>}
+          open={editOpen} visible={editOpen}
+          onCancel={function(){ setEditOpen(false); setEditRecord(null); }}
+          onOk={function(){ editForm.submit(); }}
+          okText="Guardar" cancelText="Cancelar"
+          confirmLoading={loading}
+          destroyOnClose maskClosable={false} keyboard={false}
+        >
+          <Form form={editForm} layout="vertical" onFinish={onSubmitEdit}>
+            <Form.Item name="idCompra" style={{ display:'none' }}><Input /></Form.Item>
+
+            <Form.Item name="idSuministro" label="Suministro" rules={[{ required:true, message:'Seleccione un suministro' }]}>
+              <Select
+                options={toArray(suministros).map(function(s){ return { value:String(s.idSuministro), label:s.nombreSuministro }; })}
+                placeholder="Seleccione" showSearch optionFilterProp="label"
               />
-            </Col>
-          </Row>
+            </Form.Item>
 
-          {/* NUEVO: fila adicional con filtro de Mes (sin tocar la fila anterior) */}
-          <Row gutter={[12,12]} align="bottom" style={{ marginTop: 8 }}>
-            <Col xs={24} md={8}>
-              <label style={{ display:'block', marginBottom:4 }}>Mes</label>
-              <div className="month-inline">
-                <Input type="month" value={fMes} onChange={function(e){ setFMes(e.target.value); }} />
-                <Button size="small" onClick={function(){ setFMes(''); }}>Todos</Button>
-                <Button size="small" onClick={function(){ setFMes(currentMonthKey()); }}>Este mes</Button>
-              </div>
-            </Col>
-          </Row>
+            <Form.Item name="sucursal" label="Sucursal" rules={[{ required:true, message:'Seleccione una sucursal' }]}>
+              <Select options={toArray(sucursales).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })} placeholder="Seleccione" />
+            </Form.Item>
 
-          <Divider style={{ margin:'12px 0' }} />
+            <Form.Item name="fechaCompra" label="Fecha de compra"
+              rules={[
+                { required:true, message:'Ingrese la fecha de compra' },
+                { validator: validateFechaNoFutura }
+              ]}>
+              <Input type="date" />
+            </Form.Item>
 
-          {/* === TABLA COMPRAS (CENTRADA) === */}
-          <div className="tbl-center">
-            <Table
-              dataSource={filtered}
-              columns={columnsCompras}
-              loading={loading}
-              rowKey={function(r){ return r.idCompra; }}
-              scroll={{ x: true }}
-              pagination={{ pageSize: 10 }}
-              rowClassName={function(record){
-                var e = record.estado || estadoLote(record);
-                return e === 'COMPLETADO' ? 'row-bloqueado' : '';
-              }}
-            />
-          </div>
-        </Tabs.TabPane>
-      </Tabs>
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="fechaInicioUso" label="Inicio de uso"
+                  rules={[ { validator: validateInicioVsCompra.bind(null, editForm.getFieldValue) } ]}>
+                  <Input type="date" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="fechaFinUso" label="Fin de uso"
+                  rules={[ { validator: validateFinVsInicioCompra.bind(null, editForm.getFieldValue) } ]}>
+                  <Input type="date" />
+                </Form.Item>
+              </Col>
+            </Row>
 
-      {/* MODAL: NUEVA COMPRA */}
-      <Modal
-        centered
-        title={<Space><icons.PlusOutlined /><span>Registrar compra</span></Space>}
-        open={modalOpen} visible={modalOpen}
-        onCancel={function(){ setModalOpen(false); }}
-        onOk={function(){ form.submit(); }}
-        okText="Guardar" cancelText="Cancelar"
-        confirmLoading={loading}
-        destroyOnClose maskClosable={false} keyboard={false}
-      >
-        <Form form={form} layout="vertical" onFinish={onSubmit}>
-          <Form.Item label="Suministro" name="idSuministro"
-            rules={[{ required:true, message:'Seleccione un suministro' }]}
-            extra={<a onClick={function(){ setModalOpen(true); setSelectNewInCompra(true); setSumOpen(true); }}>¿No está? Agregar nuevo</a>}
-          >
-            <Select options={sumOptions} placeholder="Seleccione" showSearch optionFilterProp="label" />
-          </Form.Item>
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item
+                  name="cantidadUnidades"
+                  label="Cantidad (unidad base)"
+                  rules={[
+                    { required:true, message:'Ingrese la cantidad' },
+                    { validator: validateCantidadVsUnidadBase.bind(null, editForm.getFieldValue) }
+                  ]}
+                  dependencies={['idSuministro']}
+                >
+                  <InputNumber min={0} step={1} style={{ width:'100%' }} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="costoTotal" label="Costo total (L.)" rules={[{ required:true, message:'Ingrese el costo total' }]}>
+                  <InputNumber min={0} step={0.01} style={{ width:'100%' }} />
+                </Form.Item>
+              </Col>
+            </Row>
 
-          <Form.Item label="Sucursal" name="sucursal"
-            rules={[{ required:true, message:'Seleccione una sucursal' }]}>
-            <Select options={sucOptions} placeholder="Seleccione" />
-          </Form.Item>
+            <Form.Item name="observaciones" label="Observaciones">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          </Form>
+        </Modal>
 
-          <Form.Item label="Fecha de compra" name="fechaCompra"
-            rules={[
-              { required:true, message:'Ingrese la fecha de compra' },
-              { validator: validateFechaNoFutura }
-            ]}>
-            <Input type="date" />
-          </Form.Item>
+        {/* MODAL: NUEVO SUMINISTRO */}
+        <Modal
+          centered
+          title={<Space><icons.PlusOutlined /><span>Nuevo suministro</span></Space>}
+          open={sumOpen} visible={sumOpen}
+          onCancel={function(){ setSumOpen(false); }}
+          onOk={function(){ sumForm.submit(); }}
+          okText="Crear" cancelText="Cancelar"
+          confirmLoading={loading}
+          destroyOnClose maskClosable={false} keyboard={false}
+        >
+          <Form form={sumForm} layout="vertical" onFinish={onSubmitSuministro}>
+            <Form.Item name="nombreSuministro" label="Nombre" rules={[{ required:true, message:'Ingrese el nombre' }]}>
+              <Input placeholder="Papel higiénico, Café..." />
+            </Form.Item>
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="unidadBase" label="Unidad base">
+                  <Input placeholder="rollo, bolsa, botella... o un número (p. ej. 50)" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="categoria" label="Categoría">
+                  <Input placeholder="Limpieza, Bebidas..." />
+                </Form.Item>
+              </Col>
+            </Row>
 
-          <Form.Item label="Fecha de inicio de uso" name="fechaInicioUso"
-            tooltip="Si empiezas a usar el mismo día, colócalo; si no, déjalo vacío."
-            rules={[
-              { validator: validateInicioVsCompra.bind(null, form.getFieldValue) }
-            ]}>
-            <Input type="date" />
-          </Form.Item>
+            <Form.Item name="minStock" label="Stock mínimo" style={{ display:'none' }}>
+              <InputNumber min={0} step={1} style={{ width:'100%' }} placeholder="0" />
+            </Form.Item>
 
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item
-                label="Cantidad (unidad base)"
-                name="cantidadUnidades"
-                rules={[
-                  { required:true, message:'Ingrese la cantidad' },
-                  { validator: validateCantidadVsUnidadBase.bind(null, form.getFieldValue) }
-                ]}
-                dependencies={['idSuministro']}
-              >
-                <InputNumber min={0} step={1} style={{ width:'100%' }} placeholder="Ej. 48" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item label="Costo total (L.)" name="costoTotal"
-                rules={[{ required:true, message:'Ingrese el costo total' }]}>
-                <InputNumber min={0} step={0.01} style={{ width:'100%' }} placeholder="Ej. 1200.00" />
-              </Form.Item>
-            </Col>
-          </Row>
+            <Form.Item name="notas" label="Notas">
+              <Input.TextArea rows={3} placeholder="Notas opcionales" />
+            </Form.Item>
+          </Form>
+        </Modal>
 
-          <Form.Item label="Observaciones" name="observaciones">
-            <Input.TextArea rows={3} placeholder="Notas opcionales" />
-          </Form.Item>
-        </Form>
-      </Modal>
+        {/* MODAL: EDITAR SUMINISTRO */}
+        <Modal
+          centered
+          title={<Space><icons.EditOutlined /><span>Editar suministro</span></Space>}
+          open={sumEditOpen} visible={sumEditOpen}
+          onCancel={function(){ setSumEditOpen(false); setSumEditRecord(null); }}
+          onOk={function(){ sumEditForm.submit(); }}
+          okText="Guardar" cancelText="Cancelar"
+          confirmLoading={loading}
+          destroyOnClose maskClosable={false} keyboard={false}
+        >
+          <Form form={sumEditForm} layout="vertical" onFinish={onSubmitSuministroEdit}>
+            <Form.Item name="idSuministro" style={{ display:'none' }}><Input /></Form.Item>
 
-      {/* MODAL: EDITAR COMPRA */}
-      <Modal
-        centered
-        title={<Space><icons.EditOutlined /><span>Editar compra</span></Space>}
-        open={editOpen} visible={editOpen}
-        onCancel={function(){ setEditOpen(false); setEditRecord(null); }}
-        onOk={function(){ editForm.submit(); }}
-        okText="Guardar" cancelText="Cancelar"
-        confirmLoading={loading}
-        destroyOnClose maskClosable={false} keyboard={false}
-      >
-        <Form form={editForm} layout="vertical" onFinish={onSubmitEdit}>
-          <Form.Item name="idCompra" style={{ display:'none' }}><Input /></Form.Item>
+            <Form.Item name="nombreSuministro" label="Nombre" rules={[{ required:true, message:'Ingrese el nombre' }]}>
+              <Input />
+            </Form.Item>
 
-          <Form.Item name="idSuministro" label="Suministro" rules={[{ required:true, message:'Seleccione un suministro' }]}>
-            <Select
-              options={toArray(suministros).map(function(s){ return { value:String(s.idSuministro), label:s.nombreSuministro }; })}
-              placeholder="Seleccione" showSearch optionFilterProp="label"
-            />
-          </Form.Item>
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="unidadBase" label="Unidad base">
+                  <Input placeholder="rollo, bolsa, botella... o un número (p. ej. 50)" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="categoria" label="Categoría">
+                  <Input />
+                </Form.Item>
+              </Col>
+            </Row>
 
-          <Form.Item name="sucursal" label="Sucursal" rules={[{ required:true, message:'Seleccione una sucursal' }]}>
-            <Select options={toArray(sucursales).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })} placeholder="Seleccione" />
-          </Form.Item>
+            <Form.Item name="minStock" label="Stock mínimo" style={{ display:'none' }}>
+              <InputNumber min={0} step={1} style={{ width:'100%' }} />
+            </Form.Item>
 
-          <Form.Item name="fechaCompra" label="Fecha de compra"
-            rules={[
-              { required:true, message:'Ingrese la fecha de compra' },
-              { validator: validateFechaNoFutura }
-            ]}>
-            <Input type="date" />
-          </Form.Item>
+            <Form.Item name="estado" style={{ display:'none' }}>
+              <Input />
+            </Form.Item>
 
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="fechaInicioUso" label="Inicio de uso"
-                rules={[ { validator: validateInicioVsCompra.bind(null, editForm.getFieldValue) } ]}>
-                <Input type="date" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="fechaFinUso" label="Fin de uso"
-                rules={[ { validator: validateFinVsInicioCompra.bind(null, editForm.getFieldValue) } ]}>
-                <Input type="date" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item
-                name="cantidadUnidades"
-                label="Cantidad (unidad base)"
-                rules={[
-                  { required:true, message:'Ingrese la cantidad' },
-                  { validator: validateCantidadVsUnidadBase.bind(null, editForm.getFieldValue) }
-                ]}
-                dependencies={['idSuministro']}
-              >
-                <InputNumber min={0} step={1} style={{ width:'100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="costoTotal" label="Costo total (L.)" rules={[{ required:true, message:'Ingrese el costo total' }]}>
-                <InputNumber min={0} step={0.01} style={{ width:'100%' }} />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item name="observaciones" label="Observaciones">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* MODAL: NUEVO SUMINISTRO */}
-      <Modal
-        centered
-        title={<Space><icons.PlusOutlined /><span>Nuevo suministro</span></Space>}
-        open={sumOpen} visible={sumOpen}
-        onCancel={function(){ setSumOpen(false); }}
-        onOk={function(){ sumForm.submit(); }}
-        okText="Crear" cancelText="Cancelar"
-        confirmLoading={loading}
-        destroyOnClose maskClosable={false} keyboard={false}
-      >
-        <Form form={sumForm} layout="vertical" onFinish={onSubmitSuministro}>
-          <Form.Item name="nombreSuministro" label="Nombre" rules={[{ required:true, message:'Ingrese el nombre' }]}>
-            <Input placeholder="Papel higiénico, Café..." />
-          </Form.Item>
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="unidadBase" label="Unidad base">
-                <Input placeholder="rollo, bolsa, botella... o un número (p. ej. 50)" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="categoria" label="Categoría">
-                <Input placeholder="Limpieza, Bebidas..." />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item name="minStock" label="Stock mínimo" style={{ display:'none' }}>
-            <InputNumber min={0} step={1} style={{ width:'100%' }} placeholder="0" />
-          </Form.Item>
-
-          <Form.Item name="notas" label="Notas">
-            <Input.TextArea rows={3} placeholder="Notas opcionales" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* MODAL: EDITAR SUMINISTRO */}
-      <Modal
-        centered
-        title={<Space><icons.EditOutlined /><span>Editar suministro</span></Space>}
-        open={sumEditOpen} visible={sumEditOpen}
-        onCancel={function(){ setSumEditOpen(false); setSumEditRecord(null); }}
-        onOk={function(){ sumEditForm.submit(); }}
-        okText="Guardar" cancelText="Cancelar"
-        confirmLoading={loading}
-        destroyOnClose maskClosable={false} keyboard={false}
-      >
-        <Form form={sumEditForm} layout="vertical" onFinish={onSubmitSuministroEdit}>
-          <Form.Item name="idSuministro" style={{ display:'none' }}><Input /></Form.Item>
-
-          <Form.Item name="nombreSuministro" label="Nombre" rules={[{ required:true, message:'Ingrese el nombre' }]}>
-            <Input />
-          </Form.Item>
-
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="unidadBase" label="Unidad base">
-                <Input placeholder="rollo, bolsa, botella... o un número (p. ej. 50)" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="categoria" label="Categoría">
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item name="minStock" label="Stock mínimo" style={{ display:'none' }}>
-            <InputNumber min={0} step={1} style={{ width:'100%' }} />
-          </Form.Item>
-
-          <Form.Item name="estado" style={{ display:'none' }}>
-            <Input />
-          </Form.Item>
-
-          <Form.Item name="notas" label="Notas">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
-      </Modal>
-    </Card>
+            <Form.Item name="notas" label="Notas">
+              <Input.TextArea rows={3} />
+            </Form.Item>
+          </Form>
+        </Modal>
+      </Card>
+    </div>
   );
 }
 ReactDOM.render(<Suministros />, document.getElementById('root'));

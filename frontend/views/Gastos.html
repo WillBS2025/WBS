@@ -1,4 +1,4 @@
-//<script type="text/jsx">
+// <script type="text/jsx">
 function Gastos() {
   const { useState, useEffect, useMemo, useRef } = React;
   const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, Row, Col, Tag, message, Tooltip, Divider, Collapse } = antd;
@@ -362,7 +362,7 @@ function Gastos() {
   function KPI({ title, value, formatter, icon, accent='#EEF2FF' }){
     const v = useCountUp(value);
     return (
-      <Card className="fade-in" bodyStyle={{ padding: 14 }}>
+      <Card className="gas-kpi fade-in" bodyStyle={{ padding: 14 }}>
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
           <div style={{ width:38, height:38, borderRadius:12, background:accent, display:'grid', placeItems:'center' }}>
             {icon}
@@ -569,159 +569,198 @@ function Gastos() {
     }
   ];
 
-  // --------- RENDER ---------
+  // --------- RENDER (diseño estilo Sucursales) ---------
   return (
-    <Card
-      title="Gastos"
-      extra={
-        <Space>
-          <Button onClick={cargar} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
-          <Button onClick={limpiarFiltros}>Limpiar filtros</Button>
-          <Button type="primary" onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Nuevo</Button>
-        </Space>
-      }
-    >
-      <style>{`
-        .fade-in { animation: fadeIn .45s ease; }
-        @keyframes fadeIn { from { opacity:.0; transform: scale(.98) } to { opacity:1; transform: scale(1) } }
-        .bar { will-change: width; }
-      `}</style>
-
-      {/* Filtros originales: ocultos (se conservan) */}
-      <Filtros style={{ display:'none' }} />
-
-      {/* Tarjeta "Total del período": OCULTA (se conserva para no romper nada) */}
-      <Row gutter={[12,12]} style={{ marginBottom: 12, display:'none' }}>
-        <Col xs={24} md={8}>
-          <div className="p-3 bg-gray-50 rounded border">
-            <div className="text-gray-500 text-xs">Total del período</div>
-            <div className="text-2xl font-bold">{formatHNL(total)}</div>
-          </div>
-        </Col>
-      </Row>
-
-      {/* KPIs y gráficos (sin cambios) */}
-      <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
-        <Col xs={24} sm={8}>
-          <KPI title="Total" value={total} formatter={formatHNL}
-               icon={<icons.WalletOutlined />} accent="#EEF2FF" />
-        </Col>
-        <Col xs={24} sm={8}>
-          <KPI title="N.º de gastos" value={count}
-               icon={<icons.NumberOutlined />} accent="#E6FFFB" />
-        </Col>
-        <Col xs={24} sm={8}>
-          <KPI title="Promedio por gasto" value={avg} formatter={formatHNL}
-               icon={<icons.RiseOutlined />} accent="#F0FFF4" />
-        </Col>
-      </Row>
-
-      <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
-        <Col xs={24} md={12}>
-          <DonutChart data={donutData} total={total} onSelect={(label)=> setFCategoria(label)} />
-        </Col>
-        <Col xs={24} md={12}>
-          <BarList data={barsSucursal}
-                   onSelect={(label)=> setFSucursal(label)}
-                   title="Gasto por sucursal"
-                   hint="Filtrar por sucursal"
-                   icon={<icons.BarChartOutlined />} />
-        </Col>
-      </Row>
-
-      <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
-        <Col xs={24} md={12}>
-          <Sparkline data={dailySeries} days={daysInMonth} />
-        </Col>
-        <Col xs={24} md={12}>
-          <Card title={<Space><icons.ClusterOutlined /> Método de pago</Space>} bodyStyle={{padding:12}}>
-            {Object.keys(byMetodo).length === 0 ? <div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos</div> : (
-              <div style={{ display:'grid', gap:8 }}>
-                {Object.entries(byMetodo).map(([k,v],i)=>(
-                  <div key={k} style={{ display:'flex', alignItems:'center', gap:10 }}>
-                    <span style={{ width:10, height:10, borderRadius:3, background:PALETTE[i % PALETTE.length] }} />
-                    <div style={{ flex:1 }}>{k}</div>
-                    <div style={{ width:80, textAlign:'right', fontWeight:600 }}>{formatHNL(v)}</div>
-                    <div style={{ width:48, textAlign:'right', color:'#64748B' }}>{formatPercent(v, total)}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Card>
-        </Col>
-      </Row>
-
-      {/* === Filtros arriba de la TABLA con collapse === */}
-      <Collapse ghost defaultActiveKey={['1']} style={{ marginBottom: 12 }}>
-        <Collapse.Panel header="Filtros" key="1">
-          <Filtros />
-        </Collapse.Panel>
-      </Collapse>
-
-      {/* Tabla */}
-      <Table dataSource={data} columns={columns} loading={loading}
-             pagination={{ pageSize: 10 }} rowKey="id" />
-
-      {/* Modal */}
-      <Modal
-        visible={modalOpen}
-        title={modalMode === 'create' ? 'Nuevo gasto' : 'Editar gasto'}
-        onCancel={()=>setModalOpen(false)}
-        onOk={onSubmit}
-        okText={modalMode === 'create' ? 'Guardar' : 'Actualizar'}
-        confirmLoading={loading}
-        destroyOnClose
+    <div className="gastos-wrap">
+      <Card
+        title={<div className="gas-hero-title"><span className="gas-spark"></span>Gastos</div>}
+        extra={
+          <Space>
+            <Button onClick={cargar} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
+            <Button onClick={limpiarFiltros}>Limpiar filtros</Button>
+            <Button type="primary" onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Nuevo</Button>
+          </Space>
+        }
       >
-        <Form form={form} layout="vertical">
-          <Form.Item name="fecha" label="Fecha" rules={[{ required:true, message:'LA FECHA ES OBLIGATORIA' }]}>
-            <input type="date" className="w-full border rounded px-2 py-1" />
-          </Form.Item>
+        <style>{`
+          .fade-in { animation: fadeIn .45s ease; }
+          @keyframes fadeIn { from { opacity:.0; transform: translateY(4px) } to { opacity:1; transform: translateY(0) } }
+          .bar { will-change: width; }
 
-          <Form.Item name="categoria" label="Categoría" rules={[{ required:true, message:'SELECCIONE UNA CATEGORÍA' }]}>
-            <Select
-              showSearch
-              placeholder="Seleccione"
-              disabled={lockCategoria}
-              options={CATEGORIAS.map(function(c){ return { value:c, label:c }; })}
-            />
-          </Form.Item>
+          /* Hero con spark (como Sucursales) */
+          .gas-hero-title{ position:relative; padding-left:12px; font-weight:800; }
+          .gas-spark{
+            position:absolute; left:0; top:6px; width:6px; height:22px; border-radius:3px;
+            background: linear-gradient(180deg,#60a5fa,#a78bfa,#34d399);
+            animation: gasSpark 2.6s ease-in-out infinite;
+          }
+          @keyframes gasSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
 
-          <Form.Item name="descripcion" label="Descripción" rules={[{ required:true, message:'INGRESE UNA DESCRIPCIÓN' }]}>
-            <Input.TextArea rows={3} placeholder="Detalle del gasto" />
-          </Form.Item>
+          /* KPI tiles con gradiente suave */
+          .gas-kpi{ border-radius:14px; background: linear-gradient(135deg,#e0eaff,#e9fff6); box-shadow: 0 2px 10px rgba(15,23,42,.06); }
 
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="monto" label="Monto (L.)" rules={[
-                { required:true, message:'INGRESE UN MONTO' },
-                { validator:(_,v)=> (v==null || Number(v) <= 0) ? Promise.reject('EL MONTO DEBE SER MAYOR QUE 0') : Promise.resolve() }
-              ]}>
-                <InputNumber className="w-full" min={0} step={0.01} onFocus={handleMontoFocus} />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="metodoPago" label="Método de pago" rules={[{ required:true, message:'SELECCIONE MÉTODO DE PAGO' }]}>
-                <Select placeholder="Seleccione" options={METODOS.map(function(m){ return { value:m, label:m }; })} />
-              </Form.Item>
-            </Col>
-          </Row>
+          /* Centrados y tabla “pastel” */
+          .tbl-center { max-width: 1200px; margin: 0 auto; }
+          .gastos-wrap .gas-table .ant-table{ border-radius:14px; overflow:hidden; }
+          .gastos-wrap .gas-table .ant-table-thead > tr > th{
+            background:#f8fafc !important; border-bottom:0; color:#334155; font-weight:700;
+          }
+          .gastos-wrap .gas-table .ant-table-tbody > tr{
+            transition: transform .15s ease, box-shadow .15s ease, background .2s;
+            animation: gasFadeUp .35s ease both;
+          }
+          @keyframes gasFadeUp{ from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:translateY(0) } }
+          .gastos-wrap .gas-table .ant-table-tbody > tr:hover{
+            transform: scale(1.01); box-shadow: 0 10px 24px rgba(2,6,23,.08);
+          }
+          .gastos-wrap .gas-table .ant-table-tbody > tr:nth-child(odd) td{ background:#fcfdff; }
+        `}</style>
 
-          <Row gutter={12}>
-            <Col span={12}>
-              <Form.Item name="proveedor" label="Proveedor">
-                <Input placeholder="Opcional" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="nombreSucursal" label="Sucursal" rules={[{ required:true, message:'SELECCIONE UNA SUCURSAL' }]}>
-                <Select allowClear showSearch placeholder="Seleccione"
-                        options={(sucursales||[]).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-      </Modal>
-    </Card>
+        {/* Filtros originales: ocultos (se conservan) */}
+        <Filtros style={{ display:'none' }} />
+
+        {/* Tarjeta "Total del período": OCULTA (se conserva) */}
+        <Row gutter={[12,12]} style={{ marginBottom: 12, display:'none' }}>
+          <Col xs={24} md={8}>
+            <div className="p-3 bg-gray-50 rounded border">
+              <div className="text-gray-500 text-xs">Total del período</div>
+              <div className="text-2xl font-bold">{formatHNL(total)}</div>
+            </div>
+          </Col>
+        </Row>
+
+        {/* KPIs y gráficos (sin cambios de lógica) */}
+        <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
+          <Col xs={24} sm={8}>
+            <KPI title="Total" value={total} formatter={formatHNL}
+                 icon={<icons.WalletOutlined />} accent="#EEF2FF" />
+          </Col>
+          <Col xs={24} sm={8}>
+            <KPI title="N.º de gastos" value={count}
+                 icon={<icons.NumberOutlined />} accent="#E6FFFB" />
+          </Col>
+          <Col xs={24} sm={8}>
+            <KPI title="Promedio por gasto" value={avg} formatter={formatHNL}
+                 icon={<icons.RiseOutlined />} accent="#F0FFF4" />
+          </Col>
+        </Row>
+
+        <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
+          <Col xs={24} md={12}>
+            <DonutChart data={donutData} total={total} onSelect={(label)=> setFCategoria(label)} />
+          </Col>
+          <Col xs={24} md={12}>
+            <BarList data={barsSucursal}
+                     onSelect={(label)=> setFSucursal(label)}
+                     title="Gasto por sucursal"
+                     hint="Filtrar por sucursal"
+                     icon={<icons.BarChartOutlined />} />
+          </Col>
+        </Row>
+
+        <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
+          <Col xs={24} md={12}>
+            <Sparkline data={dailySeries} days={daysInMonth} />
+          </Col>
+          <Col xs={24} md={12}>
+            <Card title={<Space><icons.ClusterOutlined /> Método de pago</Space>} bodyStyle={{padding:12}}>
+              {Object.keys(byMetodo).length === 0 ? <div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos</div> : (
+                <div style={{ display:'grid', gap:8 }}>
+                  {Object.entries(byMetodo).map(([k,v],i)=>(
+                    <div key={k} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <span style={{ width:10, height:10, borderRadius:3, background:PALETTE[i % PALETTE.length] }} />
+                      <div style={{ flex:1 }}>{k}</div>
+                      <div style={{ width:80, textAlign:'right', fontWeight:600 }}>{formatHNL(v)}</div>
+                      <div style={{ width:48, textAlign:'right', color:'#64748B' }}>{formatPercent(v, total)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </Col>
+        </Row>
+
+        {/* === Filtros arriba de la TABLA con collapse === */}
+        <Collapse ghost defaultActiveKey={['1']} style={{ marginBottom: 12 }}>
+          <Collapse.Panel header="Filtros" key="1">
+            <Filtros />
+          </Collapse.Panel>
+        </Collapse>
+
+        {/* Tabla centrada con estilo */}
+        <div className="tbl-center">
+          <Table
+            className="gas-table"
+            dataSource={data}
+            columns={columns}
+            loading={loading}
+            pagination={{ pageSize: 10 }}
+            rowKey="id"
+            scroll={{ x: true }}
+          />
+        </div>
+
+        {/* Modal */}
+        <Modal
+          visible={modalOpen}
+          title={modalMode === 'create' ? 'Nuevo gasto' : 'Editar gasto'}
+          onCancel={()=>setModalOpen(false)}
+          onOk={onSubmit}
+          okText={modalMode === 'create' ? 'Guardar' : 'Actualizar'}
+          confirmLoading={loading}
+          destroyOnClose
+        >
+          <Form form={form} layout="vertical">
+            <Form.Item name="fecha" label="Fecha" rules={[{ required:true, message:'LA FECHA ES OBLIGATORIA' }]}>
+              <input type="date" className="w-full border rounded px-2 py-1" />
+            </Form.Item>
+
+            <Form.Item name="categoria" label="Categoría" rules={[{ required:true, message:'SELECCIONE UNA CATEGORÍA' }]}>
+              <Select
+                showSearch
+                placeholder="Seleccione"
+                disabled={lockCategoria}
+                options={CATEGORIAS.map(function(c){ return { value:c, label:c }; })}
+              />
+            </Form.Item>
+
+            <Form.Item name="descripcion" label="Descripción" rules={[{ required:true, message:'INGRESE UNA DESCRIPCIÓN' }]}>
+              <Input.TextArea rows={3} placeholder="Detalle del gasto" />
+            </Form.Item>
+
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="monto" label="Monto (L.)" rules={[
+                  { required:true, message:'INGRESE UN MONTO' },
+                  { validator:(_,v)=> (v==null || Number(v) <= 0) ? Promise.reject('EL MONTO DEBE SER MAYOR QUE 0') : Promise.resolve() }
+                ]}>
+                  <InputNumber className="w-full" min={0} step={0.01} onFocus={handleMontoFocus} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="metodoPago" label="Método de pago" rules={[{ required:true, message:'SELECCIONE MÉTODO DE PAGO' }]}>
+                  <Select placeholder="Seleccione" options={METODOS.map(function(m){ return { value:m, label:m }; })} />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="proveedor" label="Proveedor">
+                  <Input placeholder="Opcional" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="nombreSucursal" label="Sucursal" rules={[{ required:true, message:'SELECCIONE UNA SUCURSAL' }]}>
+                  <Select allowClear showSearch placeholder="Seleccione"
+                          options={(sucursales||[]).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })} />
+                </Form.Item>
+              </Col>
+            </Row>
+          </Form>
+        </Modal>
+      </Card>
+    </div>
   );
 }
-//</script>
+// </script>
