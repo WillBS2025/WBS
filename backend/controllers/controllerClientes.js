@@ -73,3 +73,35 @@ function eliminarCliente(id_cliente){
     return JSON.stringify({ok:true});
   }catch(e){ return JSON.stringify({ok:false, message:e.message}); }
 }
+
+
+/**
+ * Lista sólo clientes activos si existe la columna 'estado'. Devuelve { ok:true, data:[{ nombre }] }.
+ * Si no existe 'estado', devuelve todos como activos.
+ */
+function listarClientesActivos(){
+  try{
+    var sh = obtenerSheet(SHEET_CLIENTES);
+    var data = sh.getDataRange().getValues();
+    if (!data || data.length < 2) return JSON.stringify({ ok:true, data: [] });
+    var head = data[0].map(String);
+    var idxNombre = head.indexOf('nombre');
+    var idxEstado = head.indexOf('estado');
+    var out = [];
+    for (var r=1;r<data.length;r++){
+      var row = data[r];
+      var estadoOk = true;
+      if (idxEstado >= 0){
+        var estado = String(row[idxEstado]||'').toLowerCase();
+        estadoOk = (estado === 'activo');
+      }
+      if (estadoOk){
+        var nom = (idxNombre>=0 ? row[idxNombre] : row[1]);
+        out.push({ nombre: String(nom||'') });
+      }
+    }
+    return JSON.stringify({ ok:true, data: out });
+  }catch(err){
+    return JSON.stringify({ ok:false, message: 'Error al listar clientes: '+err });
+  }
+}

@@ -1,56 +1,38 @@
-// <script type="text/jsx">
-function Sucursales() {
+
+<div id="SucursalesView"></div>
+<script type="text/babel">
+function Sucursales(){
   const { useState, useEffect } = React;
-  const { Table, Card, Button, Modal, Form, Input, Select, Space, Row, Col, Divider, message, Tag } = antd;
+  const { Table, Card, Button, Modal, Form, Input, Select, Space, message } = antd;
 
-  // ===== Estado =====
-  const [data, setData] = useState([]);
+  /************* estado *************/
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  // Modal + formulario
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState("create");
   const [form] = Form.useForm();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('create'); // 'create' | 'edit'
-  const [deleteOpen, setDeleteOpen] = useState(false);
   const [toDelete, setToDelete] = useState(null);
+  const [openDelete, setOpenDelete] = useState(false);
 
-  // ===== Helpers Fecha =====
-  function parseFechaFlexible(v){
-    if (v instanceof Date) return v;
-    if (typeof v === 'number') return new Date(v);
-    if (typeof v === 'string'){
-      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(v + 'T00:00:00');
-      var m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-      if (m){
-        var d = parseInt(m[1],10), mo = parseInt(m[2],10)-1, y = parseInt(m[3],10); if (y < 100) y += 2000; return new Date(y,mo,d);
-      }
-      var d2 = new Date(v); if (!isNaN(d2)) return d2; return null;
-    }
-    var d0 = new Date(v); return isNaN(d0) ? null : d0;
+  /************* utils *************/
+  function safeParse(x){
+    try{ return (typeof x === 'string') ? JSON.parse(x) : x; }catch(e){ return x; }
   }
-  function formatDDMMYYYY(d){
-    var y = d.getFullYear();
-    var m = String(d.getMonth()+1).padStart(2,'0');
-    var day = String(d.getDate()).padStart(2,'0');
-    return `${day}/${m}/${y}`;
-  }
-  function formatInputDate(d){
-    var y = d.getFullYear(); var m = String(d.getMonth()+1).padStart(2,'0'); var day = String(d.getDate()).padStart(2,'0');
-    return y + '-' + m + '-' + day;
+  function normalizarListado(raw){
+    const arr = safeParse(raw);
+    if (Array.isArray(arr)) return arr;
+    if (arr && Array.isArray(arr.data)) return arr.data;
+    if (arr && Array.isArray(arr.rows)) return arr.rows;
+    return [];
   }
 
-  // ===== Datos =====
+  /************* carga *************/
   function cargar(){
     setLoading(true);
     google.script.run
       .withSuccessHandler(function(res){
-        try{
-          var arr = JSON.parse(res) || [];
-          var normalizados = arr.map(function(r,i){ return Object.assign({}, r, { key: (r && r.id != null ? r.id : i) }); });
-          setData(normalizados);
-        }catch(e){
-          Modal.error({ title:'Error', content:'No se pudo leer la respuesta del servidor.' });
-        } finally { setLoading(false); }
+        setLoading(false);
+        setRows(normalizarListado(res));
       })
       .withFailureHandler(function(err){
         setLoading(false);
@@ -58,221 +40,156 @@ function Sucursales() {
       })
       .listarSucursales();
   }
-  useEffect(function(){ cargar(); }, []);
+  useEffect(cargar, []);
 
-  // ===== Modales =====
-  function abrirNuevo(){ setModalMode('create'); form.resetFields(); setModalOpen(true); }
+  /************* abrir modales *************/
+  function abrirNuevo(){
+    setMode("create");
+    form.resetFields();
+    form.setFieldsValue({ estado: "Activo" });
+    setOpen(true);
+  }
   function abrirEditar(rec){
-    setModalMode('edit');
-    var d = parseFechaFlexible(rec.fechaInauguracion);
+    setMode("edit");
     form.setFieldsValue({
       id: rec.id,
-      nombreSucursal: rec.nombreSucursal || '',
-      telefono: rec.telefono || '',
-      direccion: rec.direccion || '',
-      correoElectronico: rec.correoElectronico || '',
-      estado: rec.estado || 'Activo',
-      fechaInauguracion: d ? formatInputDate(d) : ''
+      nombreSucursal: rec.nombreSucursal || "",
+      direccion: rec.direccion || "",
+      telefono: rec.telefono || "",
+      correoElectronico: rec.correoElectronico || "",
+      fechaInauguracion: rec.fechaInauguracion || "",
+      estado: rec.estado || "Activo"
     });
-    setModalOpen(true);
+    setOpen(true);
   }
-  function abrirEliminar(rec){ setToDelete(rec); setDeleteOpen(true); }
+  function abrirEliminar(rec){
+    setToDelete(rec); setOpenDelete(true);
+  }
 
-  // ===== Crear/Actualizar =====
-  function onSubmit(values){
-    var payload = Object.assign({}, values);
-    if (!payload.estado) payload.estado = 'Activo';
-
-    setLoading(true);
-    if (modalMode === 'create'){
-      delete payload.id;
+  /************* submit create/update *************/
+  function onSubmit(){
+    form.validateFields().then(values => {
+      setLoading(true);
+      const fn = (mode === "create") ? "crearSucursal" : "actualizarSucursal";
       google.script.run
         .withSuccessHandler(function(res){
           setLoading(false);
-          try{
-            var r = typeof res === 'string' ? JSON.parse(res) : res;
-            if (r && r.ok){ message.success('Sucursal creada'); setModalOpen(false); cargar(); }
-            else { Modal.error({ title:'No se pudo crear', content: (r && r.message) || 'Error desconocido' }); }
-          }catch(e){ Modal.error({ title:'Error', content:'Respuesta inválida del servidor.' }); }
+          const r = safeParse(res);
+          if (r && (r.ok || r.id)){
+            message.success(mode==="create" ? "Sucursal creada" : "Sucursal actualizada");
+            setOpen(false);
+            cargar();
+          } else {
+            Modal.error({ title:"Error", content: (r && r.message) || "Operación fallida" });
+          }
         })
-        .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content: String((err && err.message) || err) }); })
-        .crearSucursal(payload);
-    } else {
-      google.script.run
-        .withSuccessHandler(function(res){
+        .withFailureHandler(function(err){
           setLoading(false);
-          try{
-            var r = typeof res === 'string' ? JSON.parse(res) : res;
-            if (r && r.ok){ message.success('Sucursal actualizada'); setModalOpen(false); cargar(); }
-            else { Modal.error({ title:'No se pudo actualizar', content: (r && r.message) || 'Error desconocido' }); }
-          }catch(e){ Modal.error({ title:'Error', content:'Respuesta inválida del servidor.' }); }
-        })
-        .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content: String((err && err.message) || err) }); })
-        .actualizarSucursal(payload);
-    }
+          Modal.error({ title:"Error de servidor", content: String((err && err.message) || err) });
+        })[fn](JSON.stringify(values));
+    });
   }
 
-  // ===== Eliminar =====
+  /************* eliminar *************/
   function confirmarEliminar(){
     if (!toDelete) return;
     setLoading(true);
     google.script.run
       .withSuccessHandler(function(res){
         setLoading(false);
-        try{
-          var r = typeof res === 'string' ? JSON.parse(res) : res;
-          if (r && r.ok){ message.success('Sucursal eliminada'); setDeleteOpen(false); setToDelete(null); cargar(); }
-          else { Modal.error({ title:'No se pudo eliminar', content: (r && r.message) || 'Error desconocido' }); }
-        }catch(e){ Modal.error({ title:'Error', content:'Respuesta inválida del servidor.' }); }
+        const r = safeParse(res);
+        if (r && (r.ok)){
+          message.success("Sucursal eliminada");
+          setOpenDelete(false); setToDelete(null);
+          cargar();
+        } else {
+          Modal.error({ title:"Error", content: (r && r.message) || "No se pudo eliminar" });
+        }
       })
-      .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content: String((err && err.message) || err) }); })
-      .eliminarSucursal(toDelete.id);
+      .withFailureHandler(function(err){
+        setLoading(false);
+        Modal.error({ title:"Error de servidor", content:String((err && err.message) || err) });
+      })
+      .eliminarSucursal(String(toDelete.id));
   }
 
-  // ===== Columnas (sin ID, Dirección ancha, Acciones compactas) =====
-  const columns = [
+  /************* columnas *************/
+  const cols = [
+    { title:'Sucursal', dataIndex:'nombreSucursal', key:'nombreSucursal' },
+    { title:'Dirección', dataIndex:'direccion', key:'direccion' },
+    { title:'Teléfono', dataIndex:'telefono', key:'telefono' },
+    { title:'Correo', dataIndex:'correoElectronico', key:'correoElectronico' },
+    { title:'Inauguración', dataIndex:'fechaInauguracion', key:'fechaInauguracion' },
+    { title:'Estado', dataIndex:'estado', key:'estado' },
     {
-      title:'Sucursal',
-      dataIndex:'nombreSucursal',
-      key:'nombreSucursal',
-      width:220,
-      render: (t) => <b>{t}</b>,
-    },
-    {
-      title:'Dirección',
-      dataIndex:'direccion',
-      key:'direccion',
-      className:'col-direccion',
-      onCell: () => ({ style: { whiteSpace:'normal', wordBreak:'break-word' } }),
-      width:360,
-    },
-    {
-      title:'Teléfono',
-      dataIndex:'telefono',
-      key:'telefono',
-      width:130,
-    },
-    {
-      title:'Correo',
-      dataIndex:'correoElectronico',
-      key:'correoElectronico',
-      width:240,
-      ellipsis:true,
-    },
-    {
-      title:'Inauguración',
-      dataIndex:'fechaInauguracion',
-      key:'fechaInauguracion',
-      width:130,
-      render: (v) => {
-        var d = parseFechaFlexible(v);
-        return d ? formatDDMMYYYY(d) : '';
-      }
-    },
-    {
-      title:'Estado',
-      dataIndex:'estado',
-      key:'estado',
-      width:110,
-      render: (s) => <span className="ant-tag" style={{background:'#f6ffed', borderColor:'#b7eb8f', color:'#389e0d'}}>{s || ''}</span>
-      // (si ya usas <Tag/> de AntD con estilos, puedes reemplazar por <Tag color="green">{s}</Tag>)
-    },
-    {
-      title:'',
+      title:'Acciones',
       key:'acciones',
-      className:'col-actions',
-      width:92,
-      align:'center',
-      render:(_,rec)=>(
-        <Space direction="vertical" size={4}>
-          <Button size="small" onClick={()=>abrirEditar(rec)} icon={<icons.EditOutlined />}>Editar</Button>
-          <Button size="small" type="text" danger onClick={()=>abrirEliminar(rec)} icon={<icons.DeleteOutlined />}>Eliminar</Button>
+      render: (_, rec) => (
+        <Space>
+          <Button type="link" onClick={() => abrirEditar(rec)}>Editar</Button>
+          <Button type="link" danger onClick={() => abrirEliminar(rec)}>Eliminar</Button>
         </Space>
       )
     }
   ];
 
+  /************* render *************/
   return (
-    <div className="sucursales-wrap">
-      <Card
-        title="Sucursales"
-        extra={
-          <Space>
-            <Button onClick={cargar} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
-            <Button type="primary" onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Nuevo</Button>
-          </Space>
-        }
+    <Card
+      title="Sucursales"
+      extra={<Space><Button onClick={cargar}>Refrescar</Button><Button type="primary" onClick={abrirNuevo}>Nueva</Button></Space>}
+    >
+      <Table rowKey={r=>String(r.id)} loading={loading} columns={cols} dataSource={rows} pagination={false} />
+
+      <Modal
+        title={mode==="create" ? "Nueva sucursal" : "Editar sucursal"}
+        open={open} visible={open}
+        onCancel={()=>setOpen(false)}
+        onOk={onSubmit}
+        okText="Guardar" cancelText="Cancelar"
+        confirmLoading={loading}
+        destroyOnClose maskClosable={false} keyboard={false}
       >
-        <Table
-          className="sucursales-table"
-          dataSource={data}
-          columns={columns}
-          loading={loading}
-          pagination={false}       // ← sin paginación
-          rowKey={(r)=> (r && r.id != null) ? r.id : r.key}
-          tableLayout="auto"
-          scroll={{ x: true }}
-        />
+        <Form form={form} layout="vertical">
+          <Form.Item name="id" style={{display:'none'}}><Input /></Form.Item>
 
-        {/* Modal Crear/Editar */}
-        <Modal
-          centered
-          title={modalMode === 'create' ? 'Nueva Sucursal' : 'Editar Sucursal'}
-          open={modalOpen}
-          visible={modalOpen}
-          okText={modalMode === 'create' ? 'Crear' : 'Guardar'}
-          cancelText="Cancelar"
-          maskClosable={false}
-          keyboard={false}
-          onCancel={()=> setModalOpen(false)}
-          onOk={()=> form.submit()}
-        >
-          <Form form={form} layout="vertical" onFinish={onSubmit}>
-            <Form.Item name="id" style={{ display:'none' }}><Input /></Form.Item>
+          <Form.Item name="nombreSucursal" label="Sucursal" rules={[{required:true, message:"Ingrese el nombre"}]}>
+            <Input />
+          </Form.Item>
 
-            <Form.Item label="Nombre" name="nombreSucursal" rules={[{ required:true, message:'Ingrese el nombre' }]}>
-              <Input placeholder="Ej. WBS - Sede Centro" autoComplete="off" />
-            </Form.Item>
+          <Form.Item name="direccion" label="Dirección" rules={[{required:true, message:"Ingrese la dirección"}]}>
+            <Input />
+          </Form.Item>
 
-            <Form.Item label="Fecha de Inauguración" name="fechaInauguracion">
-              <Input type="date" />
-            </Form.Item>
+          <Form.Item name="telefono" label="Teléfono">
+            <Input />
+          </Form.Item>
 
-            <Form.Item label="Teléfono" name="telefono">
-              <Input placeholder="Ej. 2510-5645" />
-            </Form.Item>
+          <Form.Item name="correoElectronico" label="Correo">
+            <Input type="email" />
+          </Form.Item>
 
-            <Form.Item label="Dirección" name="direccion">
-              <Input.TextArea rows={2} placeholder="Ej. Barrio Guamilito" />
-            </Form.Item>
+          <Form.Item name="fechaInauguracion" label="Inauguración">
+            <Input placeholder="dd/mm/aaaa" />
+          </Form.Item>
 
-            <Form.Item label="Correo electrónico" name="correoElectronico" rules={[{ type:'email', message:'Correo inválido' }]}>
-              <Input placeholder="ejemplo@correo.com" />
-            </Form.Item>
+          <Form.Item name="estado" label="Estado" rules={[{required:true}]}>
+            <Select options={[{value:'Activo', label:'Activo'}, {value:'Inactivo', label:'Inactivo'}]} />
+          </Form.Item>
+        </Form>
+      </Modal>
 
-            <Form.Item label="Estado" name="estado" rules={[{ required:true, message:'Seleccione el estado' }]} initialValue="Activo">
-              <Select options={[ {value:'Activo',label:'Activo'}, {value:'Inactivo',label:'Inactivo'} ]} />
-            </Form.Item>
-          </Form>
-        </Modal>
-
-        {/* Modal Eliminar */}
-        <Modal
-          centered
-          title="Eliminar Sucursal"
-          open={deleteOpen}
-          visible={deleteOpen}
-          maskClosable={false}
-          keyboard={false}
-          onCancel={()=>{ setDeleteOpen(false); setToDelete(null); }}
-          onOk={confirmarEliminar}
-        >
-          <p>¿Seguro que deseas eliminar la sucursal <b>{toDelete ? (toDelete.nombreSucursal || ('ID ' + toDelete.id)) : ''}</b>?</p>
-          <p>Esta acción no se puede deshacer.</p>
-        </Modal>
-      </Card>
-    </div>
+      <Modal
+        open={openDelete} visible={openDelete}
+        onCancel={()=>{ setOpenDelete(false); setToDelete(null); }}
+        onOk={confirmarEliminar}
+        okText="Eliminar" okType="danger" cancelText="Cancelar"
+        confirmLoading={loading}
+      >
+        <p>¿Eliminar la sucursal <b>{toDelete ? toDelete.nombreSucursal : ""}</b>?</p>
+      </Modal>
+    </Card>
   );
 }
-
-// </script>
+ReactDOM.render(<Sucursales/>, document.getElementById('SucursalesView'));
+</script>

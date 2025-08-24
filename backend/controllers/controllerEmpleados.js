@@ -78,3 +78,32 @@ function eliminarEmpleado(id_empleado){
     return JSON.stringify({ok:true});
   }catch(e){ return JSON.stringify({ok:false, message:e.message}); }
 }
+
+
+/**
+ * Lista sólo empleados con estado "Activo". Devuelve { ok:true, data:[{ nombre, sucursal? }] }
+ */
+function listarEmpleadosActivos(){
+  try{
+    var sh = obtenerSheet(SHEET_EMPLEADOS);
+    var data = sh.getDataRange().getValues();
+    if (!data || data.length < 2) return JSON.stringify({ ok:true, data: [] });
+    var head = data[0].map(String);
+    var idxNombre = head.indexOf('nombre_empleado');
+    var idxEstado = head.indexOf('estado');
+    var idxSuc = head.indexOf('nombreSucursal');
+    var out = [];
+    for (var r=1;r<data.length;r++){
+      var row = data[r];
+      var estado = String(idxEstado>=0? row[idxEstado] : '').toLowerCase();
+      if (estado === 'activo'){
+        var nombre = (idxNombre>=0? row[idxNombre] : (row[1]||''));
+        var suc = (idxSuc>=0? row[idxSuc] : '');
+        out.push({ nombre: String(nombre||''), sucursal: String(suc||'') });
+      }
+    }
+    return JSON.stringify({ ok:true, data: out });
+  }catch(err){
+    return JSON.stringify({ ok:false, message: 'Error al listar empleados: '+err });
+  }
+}

@@ -1,12 +1,509 @@
-//<script type="text/jsx">
 
-function Ventas() {
-    return (
-        <div>
-            <h2>Sección de ventas</h2>
-            <p>Aquí puedes ver las Ventas.</p>
+<style>
+  .modal-dark .ant-modal-content{ background: rgba(0,0,0,0.70); color:#C0C0C0; }
+  .modal-dark .ant-modal-header{ background: rgba(0,0,0,0.70); border-bottom: 1px solid rgba(255,255,255,0.12); }
+  .modal-dark .ant-modal-title{ color:#C0C0C0; }
+  .modal-dark .ant-table, 
+  .modal-dark .ant-table-container, 
+  .modal-dark .ant-table-thead > tr > th, 
+  .modal-dark .ant-table-tbody > tr > td{
+    background: rgba(0,0,0,0.35) !important;
+    color:#C0C0C0 !important;
+  }
+  .modal-dark .ant-table-thead > tr > th{ color:#C0C0C0 !important; }
+</style>
+<div id="VentasView"></div>
+<script type="text/babel">
+function Ventas(){
+  const { useState, useEffect, useMemo } = React;
+  const { Table, Card, Button, Modal, Form, InputNumber, Select, Space, Row, Col, message, Tabs, Input } = antd;
+  const icons = (window.icons || window.iconsAntd || {});
+
+  // ===== Context & role =====
+  const [ctx, setCtx] = useState({ usuario:'', sucursal:'' });
+  const [rol] = useState(() => { try { return (localStorage.getItem('userRole') || 'admin'); } catch(_) { return 'admin'; } });
+  const isSuper = (String(rol||'').toLowerCase() === 'super_admin');
+
+  // ===== State =====
+  const [facturas, setFacturas] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [detalle, setDetalle] = useState([]);
+  const [detalleOpen, setDetalleOpen] = useState(false);
+  const [filters, setFilters] = useState({ sucursal: undefined, empleado: undefined });
+  const [sucursales, setSucursales] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
+
+  // ===== Nueva venta (modal) =====
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form] = Form.useForm();
+  const [lineas, setLineas] = useState([]);
+  const [opciones, setOpciones] = useState([]);
+  const [clientes, setClientes] = useState([]);
+
+  // ===== Filtrado frontend =====
+  const dataFiltrada = useMemo(()=>{
+    const list = (facturas||[]).filter(r => {
+      if (!isSuper) {
+        return String(r.sucursal||'') === String(ctx.sucursal||'');
+      } else {
+        if (filters.sucursal && String(r.sucursal||'') !== String(filters.sucursal)) return false;
+        if (filters.empleado && String(r.empleado||'') !== String(filters.empleado)) return false;
+      }
+      return true;
+    });
+    return list;
+  }, [facturas, filters, ctx.sucursal, rol]);
+
+  // ===== Contexto usuario/sucursal =====
+  function cargarContexto(){
+    var usuarioActual = (window.localStorage && localStorage.getItem('userInfo')) ? (function(){ try{ return JSON.parse(localStorage.getItem('userInfo')).nombre_usuario || ''; }catch(_){ return '' } })() : '';
+    google.script.run
+      .withSuccessHandler(function(res){
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          setCtx({ usuario: r.usuario || usuarioActual, sucursal: r.sucursal || '' });
+        }catch(_){
+          setCtx({ usuario: usuarioActual, sucursal:'' });
+        }
+      })
+      .withFailureHandler(function(){
+        setCtx({ usuario: usuarioActual, sucursal:'' });
+      })
+      .obtenerContextoVenta(usuarioActual);
+  }
+
+  // ===== Loads =====
+  function cargarFacturas(){
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function(res){
+        setLoading(false);
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          var arr = (r && r.ok && r.data) ? r.data : [];
+          var now = Date.now();
+          var norm = arr.map(function(x){
+            var t = x._createdAt || x.fecha || x.Fecha;
+            var ms = (t ? new Date(t).getTime() : NaN);
+            var editable = isFinite(ms) ? (now - ms) < (5*60*1000) : true;
+            return Object.assign({}, x, { _editable: editable });
+          });
+          setFacturas(norm);
+        }catch(e){
+          message.error('Respuesta inválida');
+          setFacturas([]);
+        }
+      })
+      .withFailureHandler(function(err){
+        setLoading(false);
+        Modal.error({ title:'Error', content:String((err&&err.message)||err) });
+      })
+      .listarFacturasFront();
+  }
+
+  function cargarSucursales(){
+    google.script.run
+      .withSuccessHandler(function(res){
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          setSucursales((r && r.ok && r.sucursales) ? r.sucursales : []);
+        }catch(_){ setSucursales([]); }
+      })
+      .withFailureHandler(function(){ setSucursales([]); })
+      .listarSucursales();
+  }
+  function cargarEmpleados(){
+    google.script.run
+      .withSuccessHandler(function(res){
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          setEmpleados((r && r.ok && r.data) ? r.data : []);
+        }catch(_){ setEmpleados([]); }
+      })
+      .withFailureHandler(function(){ setEmpleados([]); })
+      .listarEmpleadosActivos();
+  }
+  function cargarClientes(){
+    google.script.run
+      .withSuccessHandler(function(res){
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          setClientes((r && r.ok && r.data) ? r.data : []);
+        }catch(_){ setClientes([]); }
+      })
+      .withFailureHandler(function(){ setClientes([]); })
+      .listarClientesActivos();
+  }
+
+  useEffect(function(){
+    cargarContexto(); cargarSucursales(); cargarEmpleados(); cargarClientes();
+  }, []);
+  useEffect(cargarFacturas, [ctx.sucursal]);
+
+  // ===== Detalle =====
+  const detCols = [
+    { title:'N.', key:'n', width: 60, align:'center', render:(_, __, idx)=> idx+1 },
+    { title:'Descripción', dataIndex:'descripcion' },
+    { title:'Cant.', dataIndex:'cantidad', align:'right' },
+    { title:'Precio', dataIndex:'precio', align:'right', render:v=>'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2}) },
+    { title:'Total línea', dataIndex:'total', align:'right', render:v=>'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2}) },
+  ];
+  function verDetalle(rec){
+    setDetalleOpen(true);
+    setDetalle([]);
+    google.script.run
+      .withSuccessHandler(function(res){
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          var arr = (r && r.ok && r.data) ? r.data : [];
+          var norm = arr.map(function(x){ return {
+            descripcion: x.descripcion || x.producto_servicio || '',
+            cantidad: Number(x.cantidad||0),
+            precio: Number(x.precio||0),
+            total: Number(x.total||x.total_linea|| (Number(x.cantidad||0)*Number(x.precio||0)))
+          }; });
+          setDetalle(norm);
+        }catch(err){ message.error(String(err)); }
+      })
+      .withFailureHandler(function(err){ message.error(String((err&&err.message)||err)); })
+      .listarDetalleFactura(String(rec.id_factura));
+  }
+
+  // ===== Nueva venta =====
+  let buscarItemsTimer;
+  function buscarItems(q){
+    if (buscarItemsTimer) { clearTimeout(buscarItemsTimer); }
+    buscarItemsTimer = setTimeout(function(){
+    google.script.run
+      .withSuccessHandler(function(res){
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          var arr = (r && r.ok && r.items) ? r.items : [];
+          setOpciones(arr);
+        }catch(_){ setOpciones([]); }
+      })
+      .withFailureHandler(function(){ setOpciones([]); })
+      .buscarItemsVenta(String(q||''), ctx.sucursal||'');
+    }, 180);
+  }
+  function addLinea(){ setLineas(prev => prev.concat([{ tipo:'', descripcion:'', cantidad:1, precio:0 }])); }
+  function rmLinea(idx){ setLineas(prev => prev.filter((_,i)=>i!==idx)); }
+  function setLinea(idx, patch){ setLineas(prev => prev.map((ln,i)=> i===idx ? ({...ln, ...patch}) : ln)); }
+  const totalVenta = useMemo(()=> (lineas||[]).reduce((acc,ln)=> acc + Number((ln.cantidad||0)*(ln.precio||0)), 0), [lineas]);
+
+  function abrirNuevo(){ setModalOpen(true); form.resetFields(); setLineas([]); }
+
+  function guardarVenta(values){
+    if (!lineas.length) { message.warning('Agrega al menos un ítem'); return; }
+    const nextId = Math.max(0, ...((facturas||[]).map(f => Number(f.id_factura||0)).filter(n=>!isNaN(n)))) + 1;
+    const payload = {
+      usuario: ctx.usuario,
+      sucursal: ctx.sucursal,
+      cliente: values.cliente || '',
+      empleado: values.empleado || '',
+      metodo_pago: values.metodo_pago || '',
+      descuento: Number(values.descuento || 0),
+      items: lineas.map(x => ({ tipo: x.tipo || '', descripcion: x.descripcion || '', cantidad: Number(x.cantidad || 0), precio: Number(x.precio || 0) })),
+      id_factura: nextId
+    };
+    const hide = message.loading('Guardando venta...', 0);
+    google.script.run
+      .withSuccessHandler(function(res){
+        hide();
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          if (r && r.ok){
+            message.success('Venta registrada');
+            setModalOpen(false);
+            cargarFacturas();
+          }else{
+            Modal.error({ title:'Error', content: (r && r.message) || 'No se pudo guardar' });
+          }
+        }catch(err){
+          Modal.error({ title:'Error', content: String(err) });
+        }
+      })
+      .withFailureHandler(function(err){ hide(); Modal.error({ title:'Error', content:String((err&&err.message)||err) }); })
+      .crearVenta(payload);
+  }
+
+  const cols = [
+    { title:'Detalle', key:'ver', render:(_,rec)=>(<Button size="small" icon={<icons.EyeOutlined/>} onClick={()=>verDetalle(rec)}>Ver detalle</Button>) },
+    { title:'Factura', dataIndex:'id_factura', key:'id_factura', width: 90 },
+    { title:'Fecha', dataIndex:'fecha', key:'fecha' },
+    { title:'Sucursal', dataIndex:'sucursal', key:'sucursal' },
+    { title:'Usuario', dataIndex:'usuario', key:'usuario' },
+    { title:'Cliente', dataIndex:'cliente', key:'cliente' },
+    { title:'Empleado', dataIndex:'empleado', key:'empleado' },
+    { title:'Sub Total', dataIndex:'sub_total', key:'sub_total', align:'right', render:v=>'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2}) },
+    { title:'Descuento', dataIndex:'descuento', key:'descuento', align:'right', render:v=>'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2}) },
+    { title:'Total', dataIndex:'total', key:'total', align:'right', render:v=>(<b>{'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2})}</b>) },
+    { title:'Método', dataIndex:'metodo_pago', key:'metodo_pago' },
+    { title:'Acciones', key:'acciones', align:'center', render:(_,rec)=>{
+        const disabled = !rec._editable;
+        const sz = 18;
+        return (
+          <Space size="middle">
+            <Button type="text" disabled={disabled} icon={<icons.EditOutlined style={{fontSize:sz}}/>} onClick={()=>message.info('Edición dentro de 5 min')}/>
+            <Button type="text" danger disabled={disabled} icon={<icons.DeleteOutlined style={{fontSize:sz}}/>} onClick={()=>message.info('Eliminación dentro de 5 min')}/>
+          </Space>
+        );
+    }}
+  ];
+
+  const vistaVentas = (
+    <Card className="mb-3">
+      <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8}}>
+        <div style={{display:'flex', gap:8, flexWrap:'wrap'}}>
+          {!isSuper ? (
+            <div style={{marginLeft:0, color:'#666'}}>Usuario: <b>{ctx.usuario||'-'}</b> &nbsp;&nbsp; Sucursal: <b>{ctx.sucursal||'-'}</b></div>
+          ) : (
+            <>
+              <Select allowClear placeholder="Filtrar por sucursal" style={{minWidth:220}}
+                value={filters.sucursal}
+                onChange={(v)=>setFilters(prev=>({...prev, sucursal:v||undefined }))}>
+                {sucursales.map(s=> <Select.Option key={s} value={s}>{s}</Select.Option>)}
+              </Select>
+              <Select allowClear placeholder="Filtrar por empleado" style={{minWidth:220}}
+                value={filters.empleado}
+                onChange={(v)=>setFilters(prev=>({...prev, empleado:v||undefined }))}>
+                {empleados.map(e=> <Select.Option key={e.nombre} value={e.nombre}>{e.nombre}</Select.Option>)}
+              </Select>
+            </>
+          )}
         </div>
-    );
-}
+        <div><Button type="primary" icon={<icons.PlusOutlined/>} onClick={abrirNuevo}>Nueva venta</Button></div>
+      </div>
 
-//</script>
+      <Table
+        size="small"
+        rowKey={r=>String(r.id_factura || r.id || r._row || r.key)}
+        dataSource={dataFiltrada}
+        columns={cols}
+        loading={loading}
+        pagination={{ pageSize: 10 }}
+      />
+
+      <Modal
+        visible={detalleOpen}
+        onCancel={()=>setDetalleOpen(false)}
+        footer={null}
+        title="Detalle de la factura"
+        width={780}
+      >
+        <Table
+          size="small"
+          rowKey={(r,i)=>String(i)}
+          dataSource={detalle}
+          columns={detCols}
+          pagination={false}
+        />
+      </Modal>
+
+      <Modal
+        centered
+        title={<Space><icons.PlusOutlined /><span>Nueva venta</span></Space>}
+        visible={modalOpen}
+        width={980}
+        onCancel={function(){ setModalOpen(false); }}
+        onOk={function(){ form.submit(); }}
+        okText="Guardar" cancelText="Cancelar"
+        destroyOnClose maskClosable={false} keyboard={false}
+      >
+        <Form layout="vertical" form={form} onFinish={guardarVenta}>
+          <Row gutter={[12,12]}>
+            <Col xs={24} md={8}>
+              <Form.Item label="Cliente" name="cliente" rules={[{required:true,message:'Seleccione cliente'}]}>
+                <Select showSearch placeholder="Seleccione" optionFilterProp="children">
+                  {clientes.map(c => <Select.Option key={c.id_cliente||c.nombre} value={c.nombre}>{c.nombre}</Select.Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Empleado" name="empleado" rules={[{required:true,message:'Seleccione empleado'}]}>
+                <Select showSearch placeholder="Seleccione" optionFilterProp="children">
+                  {empleados.map(e => <Select.Option key={e.nombre} value={e.nombre}>{e.nombre}</Select.Option>)}
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Método de pago" name="metodo_pago" rules={[{required:true,message:'Seleccione método'}]}>
+                <Select placeholder="Seleccione">
+                  <Select.Option value="efectivo">Efectivo</Select.Option>
+                  <Select.Option value="tarjeta">Tarjeta</Select.Option>
+                  <Select.Option value="transferencia">Transferencia</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item label="Descuento" name="descuento" initialValue={0}>
+                <InputNumber min={0} style={{width:'100%'}} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <div style={{fontWeight:600, marginTop:8, marginBottom:8}}>Ítems</div>
+          <Button type="dashed" icon={<icons.PlusOutlined/>} onClick={addLinea} style={{marginBottom:8}}>Agregar</Button>
+          <div style={{background:'rgba(0,0,0,0.35)', padding:8, borderRadius:8}}>
+          <Table
+            size="small"
+            dataSource={lineas.map((ln,i)=>({...ln, key:i}))}
+            pagination={false}
+            columns={[
+              { title:'Tipo', dataIndex:'tipo', render:(v,rec,idx)=>(
+                <Select value={v||undefined} style={{width:120}} onChange={val=>setLinea(idx,{tipo:val})}>
+                  <Select.Option value="servicio">Servicio</Select.Option>
+                  <Select.Option value="producto">Producto</Select.Option>
+                </Select>
+              )},
+              { title:'Descripción', dataIndex:'descripcion', width:300, render:(v,rec,idx)=>(
+                <Select
+                  showSearch
+                  value={v||undefined}
+                  placeholder="Buscar y seleccionar…"
+                  style={{width:'100%'}}
+                  onSearch={buscarItems}
+                  filterOption={false}
+                  onChange={(val, opt)=>{
+                    const sel = (opt && opt.item) || {};
+                    setLinea(idx, { descripcion: val, tipo: sel.tipo || rec.tipo, precio: sel.precio || rec.precio });
+                  }}
+                >
+                  {opciones.map(it => (
+                    <Select.Option key={it.tipo+':'+it.descripcion} value={it.descripcion} item={it}>
+                      [{it.tipo}] {it.descripcion} — L.{Number(it.precio||0).toFixed(2)}
+                    </Select.Option>
+                  ))}
+                </Select>
+              )},
+              { title:'Cant.', dataIndex:'cantidad', align:'right', render:(v,rec,idx)=>(
+                <InputNumber min={1} value={v||1} onChange={val=>setLinea(idx,{cantidad:val||1})}/>
+              )},
+              { title:'Precio', dataIndex:'precio', align:'right', render:(v,rec,idx)=>(
+                <InputNumber min={0} value={v||0} onChange={val=>setLinea(idx,{precio:val||0})}/>
+              )},
+              { title:'Total', key:'total', align:'right', render:(_,rec)=> 'L.'+Number((rec.cantidad||0)*(rec.precio||0)).toFixed(2) },
+              { title:'', key:'rm', align:'center', render:(_, __, idx)=>(
+                <Button type="text" danger icon={<icons.DeleteOutlined/>} onClick={()=>rmLinea(idx)} />
+              )},
+            ]}
+          />
+
+          
+          </div>
+          <div style={{display:'flex', justifyContent:'flex-end', marginTop:8}}>
+            <b>Total: {'L.'+Number(totalVenta - Number(form.getFieldValue('descuento')||0)).toLocaleString('es-HN',{minimumFractionDigits:2})}</b>
+          </div>
+        </Form>
+      </Modal>
+    </Card>
+  );
+
+  // ===== Tab Descuentos =====
+  const [tabKey, setTabKey] = useState('ventas');
+  const [descuentos, setDescuentos] = useState([]);
+  const [loadingDes, setLoadingDes] = useState(false);
+  const [desForm] = Form.useForm();
+  const [desOpen, setDesOpen] = useState(false);
+  const [editDes, setEditDes] = useState(null);
+
+  function cargarDescuentos(){
+    setLoadingDes(true);
+    google.script.run
+      .withSuccessHandler(function(res){
+        setLoadingDes(false);
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          var arr = (r && r.ok && r.data) ? r.data : [];
+          setDescuentos(arr);
+        }catch(_){ setDescuentos([]); }
+      })
+      .withFailureHandler(function(){ setLoadingDes(false); })
+      .listarDescuentos();
+  }
+
+  useEffect(function(){
+    if (tabKey==='descuentos') { cargarDescuentos(); }
+  }, [tabKey]);
+
+  function guardarDescuento(){
+    desForm.validateFields().then(values => {
+      const payload = { id_descuento: (editDes && editDes.id_descuento) || '', nombre_descuento: values.nombre_descuento, porcentaje: Number(values.porcentaje || 0), estado: values.estado || 'Activo' };
+      const fn = (editDes ? 'actualizarDescuento' : 'crearDescuento');
+      const hide = message.loading('Guardando...', 0);
+      google.script.run
+        .withSuccessHandler(function(res){
+          hide();
+          try{
+            var r = (typeof res==='string') ? JSON.parse(res) : res;
+            if (r && r.ok){ setDesOpen(false); cargarDescuentos(); }
+            else Modal.error({ title:'Error', content: (r && r.message)||'No se pudo guardar' });
+          }catch(e){ Modal.error({ title:'Error', content: String(e) }); }
+        })
+        .withFailureHandler(function(err){ hide(); Modal.error({ title:'Error', content: String((err&&err.message)||err) }); })
+        [fn](payload);
+    });
+  }
+
+  const vistaDescuentos = (
+    <Card>
+      <div style={{display:'flex', justifyContent:'space-between', marginBottom:8}}>
+        <div />
+        <Button type="primary" onClick={function(){ setEditDes(null); desForm.resetFields(); setDesOpen(true); }} icon={<icons.PlusOutlined/>}>Nuevo</Button>
+      </div>
+      <Table
+        rowKey={r=>String(r.id_descuento||r.id)}
+        dataSource={descuentos}
+        loading={loadingDes}
+        pagination={{ pageSize: 10 }}
+        columns={[
+          { title:'ID', dataIndex:'id_descuento', width:90 },
+          { title:'Nombre', dataIndex:'nombre_descuento' },
+          { title:'Creación', dataIndex:'fecha_creacion' },
+          { title:'% Descuento', dataIndex:'porcentaje', align:'right' },
+          { title:'Estado', dataIndex:'estado' },
+          { title:'', key:'acc', align:'center', render:(_,rec)=>(
+            <Space>
+              <Button type="text" icon={<icons.EditOutlined/>} onClick={function(){ setEditDes(rec); desForm.setFieldsValue({ nombre_descuento:rec.nombre_descuento, porcentaje:rec.porcentaje, estado: rec.estado || 'Activo' }); setDesOpen(true); }} />
+              <Button type="text" danger icon={<icons.DeleteOutlined/>} onClick={function(){
+                Modal.confirm({ title:'Eliminar descuento', content:'Esta acción no se puede deshacer', onOk: function(){
+                  google.script.run
+                    .withSuccessHandler(function(res){
+                      try{ var r=(typeof res==='string')?JSON.parse(res):res; if (r&&r.ok){ cargarDescuentos(); } else { Modal.error({title:'Error', content:(r&&r.message)||'No se pudo eliminar'});} }catch(e){ Modal.error({title:'Error', content:String(e)}); }
+                    })
+                    .withFailureHandler(function(err){ Modal.error({title:'Error', content:String((err&&err.message)||err)}); })
+                    .eliminarDescuento(String(rec.id_descuento));
+                }});
+              }} />
+            </Space>
+          )},
+        ]}
+      />
+      <Modal visible={desOpen} onCancel={function(){ setDesOpen(false); }} onOk={guardarDescuento} title={editDes?'Editar descuento':'Nuevo descuento'}>
+        <Form form={desForm} layout="vertical">
+          <Form.Item name="nombre_descuento" label="Nombre" rules={[{required:true, message:'Ingrese nombre'}]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="porcentaje" label="Porcentaje (0-1)" rules={[{required:true, message:'Ingrese porcentaje'}]}>
+            <InputNumber min={0} max={1} step={0.01} style={{width:'100%'}} />
+          </Form.Item>
+          <Form.Item name="estado" label="Estado" rules={[{required:true, message:'Seleccione estado'}]}>
+            <Select>
+              <Select.Option value="Activo">Activo</Select.Option>
+              <Select.Option value="Inactivo">Inactivo</Select.Option>
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
+    </Card>
+  );
+
+  return (
+    <Tabs activeKey={tabKey} onChange={setTabKey}>
+      <Tabs.TabPane tab="Ventas" key="ventas">{vistaVentas}</Tabs.TabPane>
+      <Tabs.TabPane tab="Descuentos" key="descuentos">{vistaDescuentos}</Tabs.TabPane>
+    </Tabs>
+  );
+}
+ReactDOM.render(<Ventas />, document.getElementById('VentasView'));
+</script>

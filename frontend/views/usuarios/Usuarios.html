@@ -173,7 +173,7 @@ function Usuarios() {
     
       <Table
         rowKey="id"
-        dataSource={Array.isArray(data)?data:[]}
+        dataSource={(Array.isArray(data)?data:[]).filter(r => !sucursalFiltro || String(r.nombreSucursal||'')===String(sucursalFiltro))}
         columns={Array.isArray(columns)?columns:[]}
         loading={loading}
         pagination={{ pageSize: 8 }}

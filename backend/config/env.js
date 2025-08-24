@@ -28,6 +28,10 @@ function env_(){
             SH_SUCURSALES: "sucursales",
 
             // HOJA GASTOS
-            SH_GASTOS: "Gastos"
+            SH_GASTOS: "Gastos",// HOJA FACTURAS
+            SH_FACTURAS: "facturas",
+
+            // HOJA DETALLE FACTURA
+            SH_DETALLE_FACTURA: "detalle_factura",
     };
 }
