@@ -126,12 +126,18 @@ function Productos() {
       .withSuccessHandler(function (res) {
         try {
           var r = typeof res === 'string' ? JSON.parse(res) : res;
-          if (r && r.ok && r.sucursales) setSucursales(r.sucursales);
-          else setSucursales([]);
+          // Soporta array directo o { ok, sucursales }
+          if (Array.isArray(r)) {
+            setSucursales(r);
+          } else if (r && r.ok && Array.isArray(r.sucursales)) {
+            setSucursales(r.sucursales);
+          } else {
+            setSucursales([]);
+          }
         } catch (e) { setSucursales([]); }
       })
       .withFailureHandler(function () { setSucursales([]); })
-      .listarSucursalesActivas();
+      .sucursales_listar_activas();    // ← antes: .listarSucursalesActivas()
   }
 
   // Inicial: productos + sucursales

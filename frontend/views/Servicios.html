@@ -42,12 +42,19 @@ function Servicios() {
       .withSuccessHandler(function(res){
         try{
           var r = (typeof res === 'string') ? JSON.parse(res) : res;
-          if (r && r.ok && r.sucursales) setSucursales(r.sucursales);
-          else setSucursales([]);
+
+          // Soporta tanto array directo como { ok, sucursales }
+          if (Array.isArray(r)) {
+            setSucursales(r);
+          } else if (r && r.ok && Array.isArray(r.sucursales)) {
+            setSucursales(r.sucursales);
+          } else {
+            setSucursales([]);
+          }
         }catch(_){ setSucursales([]); }
       })
       .withFailureHandler(function(){ setSucursales([]); })
-      .listarSucursalesActivas();
+      .sucursales_listar_activas();   // ← antes: .listarSucursalesActivas()
   }
 
   useEffect(function(){ cargar(); cargarSucursales(); }, []);

@@ -25,7 +25,7 @@ function env_(){
             SH_CLIENTES: "clientes",
 
             // HOJA SUCURSALES
-            SH_SUCURSALES: "sucursales",
+            SH_SUCURSALES: "Sucursales",
 
             // HOJA GASTOS
             SH_GASTOS: "Gastos",// HOJA FACTURAS

@@ -1,11 +1,11 @@
 /**
  * controllerSucursales.js – CRUD de sucursales
- * Hoja: env_().SH_SUCURSALES (por defecto "sucursales")
+ * Hoja: env_().SH_SUCURSALES (por defecto "Sucursales")
  * Columnas tolerantes a encabezados:
  *  id | nombreSucursal | fechaInauguracion (alias: fechainauguracion/fechalnauguracion/fechainaguracion) |
  *  telefono | direccion | correoElectronico (alias: correo/email) | estado
  */
-var SHEET_SUCURSALES = (typeof env_ === 'function' && env_().SH_SUCURSALES) || 'sucursales';
+var SHEET_SUCURSALES = (typeof env_ === 'function' && env_().SH_SUCURSALES) || 'Sucursales';
 
 /* ========== Helpers base ========== */
 function _getSheetSuc_() {
@@ -51,8 +51,12 @@ function _safeJSON_(x) {
   try { return (typeof x === "string") ? JSON.parse(x) : x; } catch (e) { return x; }
 }
 
+/* =========================
+ * NUEVOS NOMBRES (core)
+ * ========================= */
+
 /* ========== Listar ========== */
-function listarSucursales() {
+function sucursales_listar() {
   try {
     var sh = _getSheetSuc_();
     var values = _getValues_(sh);
@@ -78,8 +82,9 @@ function listarSucursales() {
     return JSON.stringify({ ok: false, message: "Error al listar sucursales: " + e });
   }
 }
-function listarSucursalesActivas() {
-  var raw = listarSucursales();
+
+function sucursales_listar_activas() {
+  var raw = sucursales_listar();
   try {
     var arr = (typeof raw === "string") ? JSON.parse(raw) : raw;
     if (!Array.isArray(arr)) return [];
@@ -92,7 +97,7 @@ function listarSucursalesActivas() {
 }
 
 /* =========== Crear =========== */
-function crearSucursal(sucursal) {
+function sucursales_crear(sucursal) {
   try {
     var sh = _getSheetSuc_();
     var headers = _headers_(sh);
@@ -122,7 +127,7 @@ function crearSucursal(sucursal) {
 }
 
 /* ========== Actualizar ========== */
-function actualizarSucursal(sucursal) {
+function sucursales_actualizar(sucursal) {
   try {
     var sh = _getSheetSuc_();
     var headers = _headers_(sh);
@@ -151,7 +156,7 @@ function actualizarSucursal(sucursal) {
 }
 
 /* ========== Eliminar ========== */
-function eliminarSucursal(id) {
+function sucursales_eliminar(id) {
   try {
     var sh = _getSheetSuc_();
     var headers = _headers_(sh);
@@ -169,3 +174,12 @@ function eliminarSucursal(id) {
   }
 }
 
+/* =========================
+ * ALIAS de compatibilidad
+ * (no eliminar, no cambian lógica)
+ * ========================= */
+function listarSucursales()           { return sucursales_listar.apply(this, arguments); }
+function listarSucursalesActivas()    { return sucursales_listar_activas.apply(this, arguments); }
+function crearSucursal(s)             { return sucursales_crear.apply(this, arguments); }
+function actualizarSucursal(s)        { return sucursales_actualizar.apply(this, arguments); }
+function eliminarSucursal(id)         { return sucursales_eliminar.apply(this, arguments); }

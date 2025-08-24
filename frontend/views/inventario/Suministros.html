@@ -14,10 +14,10 @@ function Suministros() {
   const [fEstado, setFEstado] = useState(undefined);
 
   // ******************* FILTROS PARA CATÁLOGO *******************
-  const [qCat, setQCat] = useState('');                     // BUSCAR POR NOMBRE
-  const [fCatCategoria, setFCatCategoria] = useState();     // FILTRO CATEGORÍA
-  const [fCatUnidadBase, setFCatUnidadBase] = useState();   // FILTRO UNIDAD BASE
-  const [fCatConsumo, setFCatConsumo] = useState();         // FILTRO ESTADO DE CONSUMO
+  const [qCat, setQCat] = useState('');
+  const [fCatCategoria, setFCatCategoria] = useState();
+  const [fCatUnidadBase, setFCatUnidadBase] = useState();
+  const [fCatConsumo, setFCatConsumo] = useState();
 
   // sucursales
   const [sucursales, setSucursales] = useState([]);
@@ -105,7 +105,7 @@ function Suministros() {
     return y + '-' + m + '-' + day;
   }
 
-  // *** NUEVO: EXTRAER NÚMERO DESDE 'unidadBase' (EJ. "50", "bolsa (24)", "x12") ***
+  // *** NUEVO: EXTRAER NÚMERO DESDE 'unidadBase'
   function extractNumericFromUnidadBase(txt){
     var s = String(txt == null ? '' : txt);
     var m = s.match(/(\d+(\.\d+)?)/);
@@ -227,15 +227,18 @@ function Suministros() {
       .withFailureHandler(function(){ if (!alive) return; setCompras([]); done(); })
       .listarComprasSuministros();
 
+    // ====== SOLO CAMBIO AQUÍ: cargar sucursales con nuevo nombre y respuesta tolerante ======
     google.script.run
       .withSuccessHandler(function(res){
         if (!alive) return;
         var r = safeParse(res);
-        setSucursales((r && r.ok && r.sucursales) ? r.sucursales : []);
+        var arr = Array.isArray(r) ? r : (r && r.ok && Array.isArray(r.sucursales) ? r.sucursales : []);
+        setSucursales(arr);
         done();
       })
       .withFailureHandler(function(){ if (!alive) return; setSucursales([]); done(); })
-      .listarSucursalesActivas();
+      .sucursales_listar_activas();   // ← antes: .listarSucursalesActivas()
+    // =========================================================================================
 
     return function cleanup(){ alive = false; };
   }
@@ -244,7 +247,7 @@ function Suministros() {
   /********************* MAPEOS / ESTADÍSTICAS *********************/
   var nombreById = {};
   var unidadBaseById = {};
-  var unidadCapById = {}; // *** NUEVO: LÍMITE NUMÉRICO EXTRAÍDO DE unidadBase ***
+  var unidadCapById = {};
   for (var i = 0; i < suministros.length; i++) {
     var s = suministros[i];
     nombreById[String(s.idSuministro)] = s.nombreSuministro;
@@ -310,7 +313,6 @@ function Suministros() {
   /********************* ACCIONES: COMPRAS *********************/
   function abrirNuevo(){ setSelectNewInCompra(false); form.resetFields(); setModalOpen(true); }
 
-  // *** VALIDADORES REUTILIZABLES (COMPRAS): FECHAS Y CANTIDAD ***
   function validateFechaNoFutura(_, value){
     if (!value) return Promise.resolve();
     var d = parseYMD(value), t = new Date();
@@ -410,7 +412,7 @@ function Suministros() {
         else { Modal.error({ title:'No se pudo actualizar', content:(r && r.message) || 'Error' }); setLoading(false); }
       })
       .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content:String(err) }); })
-      .actualizarCompraSuministro(JSON.stringify(payload)); // <- SI AÚN NO EXISTE EN BACKEND, NO PRESIONAR "GUARDAR"
+      .actualizarCompraSuministro(JSON.stringify(payload));
   }
   function iniciarUso(idCompra){
     Modal.confirm({
@@ -439,7 +441,6 @@ function Suministros() {
             var r = safeParse(res);
             if (r && r.ok){
               message.success('Lote marcado como agotado');
-              // *** BLOQUEAR INMEDIATAMENTE LA FILA EN UI Y QUITAR ACCIONES ***
               setCompras(function(prev){
                 return toArray(prev).map(function(c){
                   if (String(c.idCompra) === String(record.idCompra)){
@@ -500,7 +501,6 @@ function Suministros() {
       .crearSuministro(JSON.stringify(payload));
   }
 
-  // *** NUEVO: EDITAR SUMINISTRO ***
   function abrirEditarSuministro(rec){
     setSumEditRecord(rec);
     sumEditForm.setFieldsValue({
@@ -508,7 +508,7 @@ function Suministros() {
       nombreSuministro: rec.nombreSuministro || '',
       unidadBase: rec.unidadBase || '',
       categoria: rec.categoria || '',
-      minStock: Number(rec.minStock || 0),  // SE MANTIENE OCULTO
+      minStock: Number(rec.minStock || 0),
       notas: rec.notas || '',
       estado: rec.estado || 'Activo'
     });
@@ -542,7 +542,7 @@ function Suministros() {
         setLoading(false);
         Modal.error({ title:'Error de servidor', content:String(err) });
       })
-      .actualizarSuministro(JSON.stringify(payload)); // <- SI AÚN NO EXISTE EN BACKEND, NO PRESIONAR "GUARDAR"
+      .actualizarSuministro(JSON.stringify(payload));
   }
 
   /********************* COLUMNAS *********************/
@@ -662,13 +662,12 @@ function Suministros() {
     }
   ];
 
-  // opciones selects
+  // ====== OPCIONES ======
   var sucOptions = toArray(sucursales).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; });
   var sumOptions = toArray(suministros).map(function(s){ return { value:String(s.idSuministro), label:s.nombreSuministro }; });
 
   function resetFiltros(){ setQ(''); setFSucursal(undefined); setFEstado(undefined); }
   function resetFiltrosCatalogo(){ setQCat(''); setFCatCategoria(undefined); setFCatUnidadBase(undefined); setFCatConsumo(undefined); }
-
   /********************* UI (Tabs v4) *********************/
   return (
     <Card

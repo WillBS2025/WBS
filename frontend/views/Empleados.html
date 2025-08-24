@@ -47,11 +47,17 @@ function Empleados() {
       .withSuccessHandler(res => {
         try{
           const r = (typeof res==='string')? JSON.parse(res):res;
-          setSucursales((r && r.sucursales) || []);
+          if (Array.isArray(r)) {
+            setSucursales(r);
+          } else if (r && Array.isArray(r.sucursales)) {
+            setSucursales(r.sucursales);
+          } else {
+            setSucursales([]);
+          }
         }catch(_){ setSucursales([]); }
       })
       .withFailureHandler(() => setSucursales([]))
-      .listarSucursalesActivas();
+      .sucursales_listar_activas();   // ← antes: .listarSucursalesActivas()
   }
 
   useEffect(()=>{ cargar(); cargarSucursales(); }, []);

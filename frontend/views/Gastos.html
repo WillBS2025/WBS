@@ -1,14 +1,8 @@
 //<script type="text/jsx">
 function Gastos() {
-  // ===========================
-  // IMPORTS DE ANT DESIGN
-  // ===========================
   const { useState, useEffect } = React;
   const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, Row, Col, Tag, message } = antd;
 
-  // ===========================
-  // ESTADOS
-  // ===========================
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -29,15 +23,10 @@ function Gastos() {
   const [fSucursal, setFSucursal] = useState(undefined);
   const [q, setQ] = useState('');
 
-  // CATEGORÍAS Y MÉTODOS DE PAGO
   const CATEGORIAS = ['Luz','Agua','Internet','Salarios','Alquiler','Insumos','Limpieza','Mantenimiento','Publicidad','Impuestos','Servicios Profesionales','Otros'];
   const METODOS = ['Efectivo','Tarjeta','Transferencia','Cheque','Otro'];
 
-  // ===========================
-  // HELPERS
-  // ===========================
   function formatHNL(value) {
-    // FORMATEO DE MONTO EN LEMPIRAS
     var n = Number(value);
     if (!isFinite(n)) n = 0;
     try {
@@ -47,7 +36,6 @@ function Gastos() {
     }
   }
   function toInputDate(d){
-    // CONVIERTE DATE -> 'yyyy-mm-dd'
     if (!d) return '';
     var y = d.getFullYear();
     var m = String(d.getMonth()+1).padStart(2,'0');
@@ -55,19 +43,15 @@ function Gastos() {
     return y + '-' + m + '-' + day;
   }
   function parseInputDate(s){
-    // 'yyyy-mm-dd' -> Date
     if (!s) return null;
     var m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return null;
     return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
   }
 
-  // ===========================
-  // CARGA DE DATOS
-  // ===========================
+  // ===== CARGA DE DATOS =====
   function cargar() {
     setLoading(true);
-    // PARSEA yyyy-mm A ENTEROS
     var m = 0, y = 0;
     if (mesYear && /^\d{4}-\d{2}$/.test(mesYear)) {
       y = Number(mesYear.slice(0,4));
@@ -84,7 +68,6 @@ function Gastos() {
         try{
           var arr = JSON.parse(res) || [];
           var normalized = arr.map(function(r,i){
-            // CONVIERTE FECHAS A Date EN EL CLIENTE (SI VIENEN COMO STRING)
             var d = r && r.fecha;
             if (d && typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d)) {
               try { r.fecha = new Date(d); } catch(_){}
@@ -103,33 +86,28 @@ function Gastos() {
       .listarGastos(JSON.stringify(filtros));
   }
 
+  // ===== CARGA DE SUCURSALES (cambio mínimo aplicado) =====
   function cargarSucursales(){
     google.script.run
       .withSuccessHandler(function(res){
         try{
-          var r = typeof res === 'string' ? JSON.parse(res) : res;
-          if (r && r.ok && r.sucursales) setSucursales(r.sucursales);
-          else setSucursales([]);
+          var r = (typeof res === 'string') ? JSON.parse(res) : res;
+          var arr = Array.isArray(r) ? r : (r && r.ok && Array.isArray(r.sucursales) ? r.sucursales : []);
+          setSucursales(arr || []);
         }catch(_){ setSucursales([]); }
       })
       .withFailureHandler(function(){ setSucursales([]); })
-      .listarSucursalesActivas();
+      .sucursales_listar_activas();  // ← antes: .listarSucursalesActivas()
   }
 
-  // CARGA INICIAL
   useEffect(function(){
     cargar();
     cargarSucursales();
   }, []);
 
-  // APLICAR FILTROS AUTOMÁTICAMENTE CUANDO CAMBIAN MES/CATEGORÍA/SUCURSAL
-  useEffect(function(){
-    cargar();
-  }, [mesYear, fCategoria, fSucursal]);
+  useEffect(function(){ cargar(); }, [mesYear, fCategoria, fSucursal]);
 
-  // ===========================
-  // MODAL NUEVO / EDITAR
-  // ===========================
+  // ===== MODAL NUEVO / EDITAR =====
   function abrirNuevo(){
     setModalMode('create');
     setEditing(null);
@@ -142,7 +120,6 @@ function Gastos() {
       metodoPago: undefined,
       proveedor: '',
       nombreSucursal: undefined
-      // COMPROBANTEURL OCULTO: NO INICIALIZAR
     });
     setModalOpen(true);
   }
@@ -160,7 +137,6 @@ function Gastos() {
       metodoPago: record.metodoPago || undefined,
       proveedor: record.proveedor || '',
       nombreSucursal: record.nombreSucursal || undefined
-      // COMPROBANTEURL OCULTO: NO MOSTRAR NI EDITAR
     });
     setModalOpen(true);
   }
@@ -169,7 +145,6 @@ function Gastos() {
     form.validateFields().then(function(values){
       setLoading(true);
       var payload = {
-        // SOLO CAMPOS VISIBLES — NO ENVIAR comprobanteURL
         fecha: parseInputDate(values.fecha),
         categoria: values.categoria || '',
         descripcion: values.descripcion || '',
@@ -261,30 +236,22 @@ function Gastos() {
     });
   }
 
-  // BOTÓN LIMPIAR FILTROS (AL ESTILO PRODUCTOS)
   function limpiarFiltros(){
     setMesYear(defaultMonth);
     setFCategoria(undefined);
     setFSucursal(undefined);
     setQ('');
-    // DISPARAR CARGA TRAS RESETEO
     setTimeout(cargar, 0);
   }
 
-  // ===========================
-  // DERIVADOS / KPIS
-  // ===========================
   var total = (data || []).reduce(function(acc, r){ return acc + Number(r.monto || 0); }, 0);
 
-  // ===========================
-  // COLUMNAS TABLA
-  // ===========================
   const columns = [
     { title: 'Fecha', dataIndex: 'fecha', key: 'fecha',
       render: function(v){
         try{
           var d = (v && typeof v === 'string') ? new Date(v) : v;
-        var y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+          var y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
           return dd + '/' + m + '/' + y;
         }catch(_){ return ''; }
       }
@@ -300,15 +267,6 @@ function Gastos() {
     { title: 'Método', dataIndex: 'metodoPago', key: 'metodoPago' },
     { title: 'Proveedor', dataIndex: 'proveedor', key: 'proveedor' },
     { title: 'Sucursal', dataIndex: 'nombreSucursal', key: 'nombreSucursal' },
-
-    // COLUMNA DE COMPROBANTE OCULTA POR SOLICITUD:
-    // { title: 'Comprobante', dataIndex: 'comprobanteURL', key: 'comprobanteURL',
-    //   render: function(v){
-    //     if (!v) return null;
-    //     return <a href={v} target="_blank" rel="noreferrer">Abrir</a>;
-    //   }
-    // },
-
     { title: 'Acciones', key: 'acciones',
       render: function(_,record){
         return (
@@ -321,9 +279,6 @@ function Gastos() {
     }
   ];
 
-  // ===========================
-  // UI
-  // ===========================
   return (
     <Card
       title="Gastos"
@@ -335,45 +290,28 @@ function Gastos() {
         </Space>
       }
     >
-      {/* FILTROS */}
       <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
         <Col xs={24} md={6}>
           <label className="block text-xs text-gray-500 mb-1">Mes</label>
-          <input
-            type="month"
-            className="w-full border rounded px-2 py-1"
-            value={mesYear}
-            onChange={e=>setMesYear(e.target.value)}
-          />
+          <input type="month" className="w-full border rounded px-2 py-1"
+                 value={mesYear} onChange={e=>setMesYear(e.target.value)} />
         </Col>
         <Col xs={24} md={6}>
           <label className="block text-xs text-gray-500 mb-1">Categoría</label>
-          <Select allowClear placeholder="Todas"
-            className="w-full"
-            value={fCategoria}
-            onChange={setFCategoria}
-            options={CATEGORIAS.map(function(c){ return { value:c, label:c }; })}
-          />
+          <Select allowClear placeholder="Todas" className="w-full"
+                  value={fCategoria} onChange={setFCategoria}
+                  options={CATEGORIAS.map(function(c){ return { value:c, label:c }; })} />
         </Col>
         <Col xs={24} md={6}>
           <label className="block text-xs text-gray-500 mb-1">Sucursal</label>
-          <Select allowClear placeholder="Todas"
-            className="w-full"
-            value={fSucursal}
-            onChange={setFSucursal}
-            options={(sucursales||[]).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })}
-          />
+          <Select allowClear placeholder="Todas" className="w-full"
+                  value={fSucursal} onChange={setFSucursal}
+                  options={(sucursales||[]).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })} />
         </Col>
         <Col xs={24} md={6}>
           <label className="block text-xs text-gray-500 mb-1">Buscar</label>
-          {/* INPUT.SEARCH PARA DISPARAR BÚSQUEDA MANUAL */}
-          <Input.Search
-            placeholder="Texto libre..."
-            value={q}
-            onChange={e=>setQ(e.target.value)}
-            onSearch={cargar}
-            allowClear
-          />
+          <Input.Search placeholder="Texto libre..." value={q}
+                        onChange={e=>setQ(e.target.value)} onSearch={cargar} allowClear />
         </Col>
       </Row>
 
@@ -386,15 +324,9 @@ function Gastos() {
         </Col>
       </Row>
 
-      <Table
-        dataSource={data}
-        columns={columns}
-        loading={loading}
-        pagination={{ pageSize: 10 }}
-        rowKey="id"
-      />
+      <Table dataSource={data} columns={columns} loading={loading}
+             pagination={{ pageSize: 10 }} rowKey="id" />
 
-      {/* MODAL CREAR / EDITAR */}
       <Modal
         visible={modalOpen}
         title={modalMode === 'create' ? 'Nuevo gasto' : 'Editar gasto'}
@@ -410,11 +342,8 @@ function Gastos() {
           </Form.Item>
 
           <Form.Item name="categoria" label="Categoría" rules={[{ required:true, message:'SELECCIONE UNA CATEGORÍA' }]}>
-            <Select
-              showSearch
-              placeholder="Seleccione"
-              options={CATEGORIAS.map(function(c){ return { value:c, label:c }; })}
-            />
+            <Select showSearch placeholder="Seleccione"
+                    options={CATEGORIAS.map(function(c){ return { value:c, label:c }; })} />
           </Form.Item>
 
           <Form.Item name="descripcion" label="Descripción" rules={[{ required:true, message:'INGRESE UNA DESCRIPCIÓN' }]}>
@@ -444,27 +373,12 @@ function Gastos() {
               </Form.Item>
             </Col>
             <Col span={12}>
-              {/* SUCURSAL OBLIGATORIA EN MODALES */}
-              <Form.Item
-                name="nombreSucursal"
-                label="Sucursal"
-                rules={[{ required:true, message:'SELECCIONE UNA SUCURSAL' }]}
-              >
-                <Select
-                  allowClear
-                  showSearch
-                  placeholder="Seleccione"
-                  options={(sucursales||[]).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })}
-                />
+              <Form.Item name="nombreSucursal" label="Sucursal" rules={[{ required:true, message:'SELECCIONE UNA SUCURSAL' }]}>
+                <Select allowClear showSearch placeholder="Seleccione"
+                        options={(sucursales||[]).map(function(s){ return { value:s.nombreSucursal, label:s.nombreSucursal }; })} />
               </Form.Item>
             </Col>
           </Row>
-
-          {/* URL COMPROBANTE OCULTO POR SOLICITUD
-          <Form.Item name="comprobanteURL" label="URL Comprobante">
-            <Input placeholder="https://..." />
-          </Form.Item>
-          */}
         </Form>
       </Modal>
     </Card>
