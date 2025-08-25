@@ -9,6 +9,9 @@ function env_(){
             // HOJA PRODUCTOS
             SH_PRODUCTOS: "productos",
 
+            // HOJA PRODUCTOS 2 (para ventas con precio_compra)
+            SH_PRODUCTOS2: "productos2",
+
             // HOJA SERVICIOS
             SH_SERVICIOS: "servicios",
 

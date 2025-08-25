@@ -139,7 +139,7 @@ function actualizarDescuento(payload){
         if (idxPor>=0) row[idxPor] = Number(p.porcentaje || row[idxPor] || 0);
         if (idxEst>=0) row[idxEst] = p.estado || row[idxEst] || 'Activo';
         sh.getRange(r+1,1,1,head.length).setValues([row]);
-        return JSON.stringify({ ok:true });
+        return JSON.stringify({ ok:true }); // RESTORE_STOCK_ON_DELETE
       }
     }
     return JSON.stringify({ ok:false, message:'No encontrado' });
@@ -152,21 +152,41 @@ function eliminarDescuento(id){
   try{
     var sh = _getSheetDescuentos_();
     var data = sh.getDataRange().getValues();
-    if (!data || data.length<2) return JSON.stringify({ ok:false, message:'No hay datos' });
-    var head = data[0].map(String);
-    var idxId = __V_idxOfAny__(head,['iddescuento','id']);
-    var sid = String(id||'').trim();
-    for (var r=1;r<data.length;r++){
-      var row=data[r]; var rid=String(idxId>=0?row[idxId]:'').trim();
-      if (rid===sid){ sh.deleteRow(r+1); return JSON.stringify({ ok:true }); }
+    if (!data || data.length < 2) {
+      return JSON.stringify({ ok:false, message:'No hay datos' });
     }
+
+    var head  = data[0].map(String);
+    var idxId = __V_idxOfAny__(head, ['iddescuento','id']);
+    var sid   = String(id || '').trim();
+
+    for (var r = 1; r < data.length; r++){
+      var row = data[r];
+      var rid = String(idxId >= 0 ? row[idxId] : '').trim();
+
+      if (rid === sid){
+        // borra la fila de hoja (recuerda: +1 por cabecera y +1 por base 1)
+        sh.deleteRow(r + 1);
+        return JSON.stringify({ ok:true });
+      }
+    }
+
     return JSON.stringify({ ok:false, message:'No encontrado' });
-  }catch(err){
-    return JSON.stringify({ ok:false, message:'Error al eliminar descuento: '+err });
+  } catch (err){
+    return JSON.stringify({ ok:false, message:'Error al eliminar descuento: ' + err });
   }
 }
 
 
+
+function _getSheetProductos_(){
+  var name = (typeof env_==='function' && (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2)) || 'productos';
+  try{
+    var sh = obtenerSheet((typeof env_==='function' && env_().SH_PRODUCTOS) || 'productos');
+    if (sh) return sh;
+  }catch(e){}
+  return obtenerSheet((typeof env_==='function' && env_().SH_PRODUCTOS2) || 'productos2');
+}
 /** ==== Ventas / Facturas ==== */
 function _getSheetFacturas_(){
   var name = (typeof env_==='function' && env_().SH_FACTURAS) || 'facturas';
@@ -209,6 +229,40 @@ function __V_nextIdFacturas__(){
   for (var i=0;i<vals.length;i++){ var v = Number(vals[i][0]||0); if (v>max) max=v; }
   return max+1;
 }
+function __V_updateProductoStock__(nombre, sucursal, delta){
+  try{
+    var sh = _getSheetProductos_();
+    var head = __V_head__(sh);
+    var m = __V_headerIndexMap__(head);
+    var idxNom = (m['nombreproducto']!=null) ? m['nombreproducto']
+               : (m['nombre']!=null) ? m['nombre']
+               : (m['producto']!=null) ? m['producto']
+               : (m['descripcion']!=null) ? m['descripcion'] : -1;
+    var idxStock = (m['stock']!=null) ? m['stock']
+                 : (m['existencia']!=null) ? m['existencia'] : -1;
+    var idxSuc = (m['nombresucursal']!=null) ? m['nombresucursal']
+               : (m['sucursal']!=null) ? m['sucursal']
+               : (m['nombre_sucursal']!=null) ? m['nombre_sucursal'] : -1;
+    if (idxNom<0 || idxStock<0) return false;
+    var last = sh.getLastRow();
+    for (var r=2; r<=last; r++){
+      var row = sh.getRange(r,1,1,head.length).getValues()[0];
+      var n = String(row[idxNom]||'').trim();
+      var s = (idxSuc>=0 ? String(row[idxSuc]||'').trim() : '');
+      if (n === String(nombre||'').trim() && (!sucursal || (idxSuc<0) || s === String(sucursal||'').trim())){
+        var cur = Number(row[idxStock]||0);
+        var nxt = cur + Number(delta||0);
+        if (!isFinite(nxt)) nxt = cur;
+        if (nxt < 0) nxt = 0;
+        row[idxStock] = nxt;
+        sh.getRange(r,1,1,head.length).setValues([row]);
+        return true;
+      }
+    }
+    return false;
+  }catch(e){ return false; }
+}
+
 /**
  * Devuelve {usuario, sucursal} para el nombre de usuario dado.
  */
@@ -265,7 +319,6 @@ function listarFacturasFront(){
         fecha: __V_get(m, row, ['fecha','fecharegistro','createdat','creado'], ''),
         sucursal: __V_get(m, row, ['sucursal','nombresucursal','nombre_sucursal'], ''),
         usuario: __V_get(m, row, ['usuario','user'], ''),
-        cliente: __V_get(m, row, ['cliente'], ''),
         empleado: __V_get(m, row, ['empleado'], ''),
         sub_total: Number(__V_get(m, row, ['subtotal','sub_total','sub total'], 0) || 0),
         descuento: Number(__V_get(m, row, ['descuento'], 0) || 0),
@@ -395,8 +448,18 @@ function crearVenta(payload){
       if (rowsD.length) shD.getRange(shD.getLastRow()+1,1,rowsD.length,headD.length).setValues(rowsD);
     }
 
+    // Actualizar inventario para productos
+    try{
+      for (var k=0;k<items.length;k++){
+        var it2 = items[k]||{};
+        if (String(it2.tipo||'').toLowerCase()==='producto'){
+          __V_updateProductoStock__(String(it2.descripcion||''), String(obj.sucursal||''), -Number(it2.cantidad||0));
+        }
+      }
+    }catch(e){}
+
     return JSON.stringify({ ok:true, id_factura: id });
-  }catch(err){
+  } catch(err){
     return JSON.stringify({ ok:false, message: 'Error al crear venta: '+err });
   }
 }
@@ -406,6 +469,30 @@ function crearVenta(payload){
 
 /** Lista el detalle de una factura en la hoja detalle_factura por id_factura. */
 function listarDetalleFactura(id){
+  try{
+    // Diccionario nombre -> tipo usando hojas de servicios y productos
+    var mapaTipos = {};
+    try{
+      var shS = obtenerSheet((env_().SH_SERVICIOS||'servicios'));
+      var arrS = (typeof _read==='function' ? _read(shS) : []);
+      for (var s=0; s<arrS.length; s++){
+        var rs = arrS[s] || {};
+        var nomS = String(rs.nombre_servicio||rs.nombreServicio||rs.nombre||rs.descripcion||'').trim();
+        if (nomS) mapaTipos[nomS] = 'servicio';
+      }
+    }catch(e){}
+    try{
+      var hojaProductos = (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2 || 'productos');
+      var shP = obtenerSheet(hojaProductos);
+      var arrP = (typeof _read==='function' ? _read(shP) : []);
+      for (var p=0; p<arrP.length; p++){
+        var rp = arrP[p] || {};
+        var nomP = String(rp.nombreProducto||rp.nombre||rp.descripcion||'').trim();
+        if (nomP) mapaTipos[nomP] = 'producto';
+      }
+    }catch(e){}
+  }catch(e){ var mapaTipos = {}; }
+
   try{
     var sh = obtenerSheet((env_().SH_DETALLE_FACTURA||'detalle_factura'));
     var head = __V_head__(sh);
@@ -425,7 +512,7 @@ function listarDetalleFactura(id){
         var cant = Number(idxCant>=0 ? row[idxCant] : 0);
         var pre  = Number(idxPre>=0  ? row[idxPre]  : 0);
         var tot  = (idxTot>=0 ? Number(row[idxTot]||0) : (cant*pre));
-        out.push({ descripcion: desc, cantidad: cant, precio: pre, total: tot });
+        out.push({ tipo: mapaTipos[desc]||'', descripcion: desc, cantidad: cant, precio: pre, total: tot });
       }
     }
     return JSON.stringify({ ok:true, data: out });
@@ -434,40 +521,115 @@ function listarDetalleFactura(id){
   }
 }
 
-/** Busca items (servicios + productos) para el autocompletar del modal Nueva venta. */
-function buscarItemsVenta(query, sucursal){
-  try{
-    query = String(query||'').toLowerCase().trim();
-    sucursal = String(sucursal||'').trim();
-    var items = [];
 
-    // Servicios
+/** Prefetch de servicios y productos por sucursal con cache (5 min). */
+function bootstrapVentas(sucursal){
+  try{
+    sucursal = String(sucursal||'').trim();
+    var cache = (CacheService && CacheService.getScriptCache && CacheService.getScriptCache()) || null;
+    var key = 'VENTAS_BOOTSTRAP_'+(env_().ID_DATABASE||'')+'_'+sucursal;
+    if (cache){
+      var hit = cache.get(key);
+      if (hit) return hit;
+    }
+    var out = { ok:true, servicios:[], productos:[] };
+
+    // Servicios activos por sucursal
     try{
       var shS = obtenerSheet((env_().SH_SERVICIOS||'servicios'));
       var arrS = (typeof _read==='function' ? _read(shS) : []);
       for (var i=0;i<arrS.length;i++){
-        var r = arrS[i] || {};
-        var estado = String(r.estado||'').toLowerCase();
-        if (estado && estado!=='activo') continue;
+        var r = arrS[i]||{};
+        var est = String(r.estado||'').toLowerCase().trim();
+        if (est && est!=='activo') continue;
         var suc = String(r.nombre_sucursal||r.sucursal||'').trim();
         var nom = String(r.nombre_servicio||r.nombre||r.descripcion||'').trim();
         if (sucursal && suc && suc !== sucursal) continue;
-        if (query && nom.toLowerCase().indexOf(query) === -1) continue;
-        items.push({ tipo:'servicio', descripcion: nom, precio: Number(r.precio||0) });
+        out.servicios.push({ tipo:'servicio', descripcion: nom, precio: Number(r.precio||0) });
+      }
+    }catch(e){}
+
+    // Productos por sucursal
+    try{
+      var hojaProductos = (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2 || 'productos');
+      var shP = obtenerSheet(hojaProductos);
+      var arrP = (typeof _read==='function' ? _read(shP) : []);
+      for (var j=0;j<arrP.length;j++){
+        var p = arrP[j]||{};
+        var sucP = String(p.nombreSucursal||p.sucursal||p.nombre_sucursal||'').trim();
+        var nomP = String(p.nombreProducto||p.nombre||p.descripcion||'').trim();
+        if (sucursal && sucP && sucP !== sucursal) continue;
+        var precio = Number(p.precio || p.precio_venta || p.precioVenta || p.precio_compra || p.costo || 0);
+        out.productos.push({ tipo:'producto', descripcion: nomP, precio: precio });
+      }
+    }catch(e){}
+
+    // Orden alfabético
+    try{
+      out.servicios.sort(function(a,b){ return String(a.descripcion).localeCompare(String(b.descripcion)); });
+      out.productos.sort(function(a,b){ return String(a.descripcion).localeCompare(String(b.descripcion)); });
+    }catch(e){}
+
+    var resp = JSON.stringify(out);
+    if (cache){ cache.put(key, resp, 300); } // 5 minutos
+    return resp;
+  }catch(err){
+    return JSON.stringify({ ok:false, message:'Error en bootstrapVentas: '+err });
+  }
+}
+
+/** Busca items (servicios + productos) para el autocompletar del modal Nueva venta. */
+function buscarItemsVenta(query, sucursal, tipo){
+  try{
+    var boot = JSON.parse(bootstrapVentas(sucursal)||'{}');
+    if (boot && boot.ok){
+      var base=[];
+      if (!tipo || String(tipo).toLowerCase()==='servicio') base=base.concat(boot.servicios||[]);
+      if (!tipo || String(tipo).toLowerCase()==='producto') base=base.concat(boot.productos||[]);
+      if (query){ var q=String(query||'').toLowerCase(); base = base.filter(function(it){return String(it.descripcion||'').toLowerCase().indexOf(q)!==-1;}); }
+      if (base.length){ return JSON.stringify({ ok:true, items: base }); }
+    }
+  }catch(_){ }
+
+  try{
+    query = String(query||'').toLowerCase().trim();
+    sucursal = String(sucursal||'').trim();
+    tipo = (tipo ? String(tipo).toLowerCase() : '');
+    var items = [];
+
+    // Servicios
+    try{
+      if (!tipo || tipo === 'servicio') {
+        var shS = obtenerSheet((env_().SH_SERVICIOS||'servicios'));
+        var arrS = (typeof _read==='function' ? _read(shS) : []);
+        for (var i=0;i<arrS.length;i++){
+          var r = arrS[i] || {};
+          var estado = String(r.estado||'').toLowerCase();
+          if (estado && estado!=='activo') continue;
+          var suc = String(r.nombre_sucursal||r.sucursal||'').trim();
+          var nom = String(r.nombre_servicio||r.nombre||r.descripcion||'').trim();
+          if (sucursal && suc && suc !== sucursal) continue;
+          if (query && nom.toLowerCase().indexOf(query) === -1) continue;
+          items.push({ tipo:'servicio', descripcion: nom, precio: Number(r.precio||0) });
+        }
       }
     }catch(e){}
 
     // Productos
     try{
-      var shP = obtenerSheet((env_().SH_PRODUCTOS||'productos'));
-      var arrP = (typeof _read==='function' ? _read(shP) : []);
-      for (var j=0;j<arrP.length;j++){
-        var p = arrP[j] || {};
-        var sucP = String(p.nombreSucursal||p.sucursal||'').trim();
-        var nomP = String(p.nombreProducto||p.nombre||p.descripcion||'').trim();
-        if (sucursal && sucP && sucP !== sucursal) continue;
-        if (query && nomP.toLowerCase().indexOf(query) === -1) continue;
-        items.push({ tipo:'producto', descripcion: nomP, precio: Number(p.precio||0) });
+      if (!tipo || tipo === 'producto') {
+        var hojaProductos = (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2 || 'productos');
+        var shP = obtenerSheet(hojaProductos);
+        var arrP = (typeof _read==='function' ? _read(shP) : []);
+        for (var j=0;j<arrP.length;j++){
+          var p = arrP[j] || {};
+          var sucP = String(p.nombreSucursal||p.sucursal||p.nombre_sucursal||'').trim();
+          var nomP = String(p.nombreProducto||p.nombre||p.descripcion||'').trim();
+          if (sucursal && sucP && sucP !== sucursal) continue;
+          if (query && nomP.toLowerCase().indexOf(query) === -1) continue;
+          var precio = Number(p.precio || p.precio_venta || p.precioVenta || p.precio_compra || p.costo || 0);
+          items.push({ tipo:'producto', descripcion: nomP, precio: precio });
+        }
       }
     }catch(e){}
 
@@ -480,5 +642,231 @@ function buscarItemsVenta(query, sucursal){
     return JSON.stringify({ ok:true, items: items });
   }catch(err){
     return JSON.stringify({ ok:false, message: 'Error al buscar ítems: '+err });
+  }
+}
+
+/** Verifica si puede editar/eliminar una factura según rol y tiempo (5 min para admin). */
+function __V_puedeEditarFactura__(fecha, rol){
+  try{
+    rol = String(rol||'').toLowerCase();
+    if (rol === 'super_admin') return true;
+    var t = (fecha && Object.prototype.toString.call(fecha)==='[object Date]' && !isNaN(fecha)) ? fecha.getTime() : Date.parse(fecha);
+    var ms = isNaN(t) ? NaN : t;
+    if (!isFinite(ms)) return false;
+    var now = Date.now();
+    return (now - ms) < (5*60*1000);
+  }catch(_){ return false; }
+}
+
+
+/** Elimina una factura y sus líneas si se permite por rol/tiempo. */
+function eliminarVenta(id_factura, rol){
+  try{
+    id_factura = String(id_factura||'').trim();
+    if (!id_factura) return JSON.stringify({ ok:false, message:'ID requerido' });
+    var shF = _getSheetFacturas_();
+    var data = shF.getDataRange().getValues();
+    if (!data || data.length<2) return JSON.stringify({ ok:false, message:'No hay datos' });
+    var head = data[0];
+    var m = __V_headerIndexMap__(head);
+    var idxId = (m['id_factura']!=null) ? m['id_factura'] :
+                (m['id']!=null) ? m['id'] :
+                (m['factura']!=null) ? m['factura'] : -1;
+    var idxFecha = (m['fecha']!=null) ? m['fecha'] :
+                   (m['fecharegistro']!=null) ? m['fecharegistro'] :
+                   (m['createdat']!=null) ? m['createdat'] : -1;
+    var rowIndex = -1;
+    var fechaVal = '';
+    for (var r=1; r<data.length; r++){
+      if (String(data[r][idxId]) === id_factura){
+        rowIndex = r+1;
+        fechaVal = (idxFecha>=0 ? data[r][idxFecha] : '');
+        break;
+      }
+    }
+    if (rowIndex < 0) return JSON.stringify({ ok:false, message:'No encontrado' });
+    if (!__V_puedeEditarFactura__(fechaVal, rol)){
+      return JSON.stringify({ ok:false, message:'Fuera de ventana de edición (5 min) para rol '+rol });
+    }
+    // Restaurar stock por detalle previo (si son productos)
+    try{
+      var shD = _getSheetDetalle_();
+      var headD = __V_head__(shD);
+      var mapD = __V_headerIndexMap__(headD);
+      var idxIdF = (mapD['id_factura']!=null)?mapD['id_factura']:((mapD['id']!=null)?mapD['id']:(mapD['factura']!=null?mapD['factura']:-1));
+      var idxDesc = (mapD['descripcion']!=null)?mapD['descripcion']:((mapD['producto_servicio']!=null)?mapD['producto_servicio']:-1);
+      var idxCant = (mapD['cantidad']!=null)?mapD['cantidad']:-1;
+      var sucFac = (m['sucursal']!=null? data[rowIndex-1][m['sucursal']] : (m['nombresucursal']!=null? data[rowIndex-1][m['nombresucursal']] : ''));
+      var last = shD.getLastRow();
+      // Detectar productos por nombre en hoja productos
+      var productosSet = {};
+      try{
+        var hojaProductos = (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2 || 'productos');
+        var shP = obtenerSheet(hojaProductos);
+        var arrP = (typeof _read==='function' ? _read(shP) : []);
+        for (var p=0;p<arrP.length;p++){ var rp=arrP[p]||{}; var nom=String(rp.nombreProducto||rp.nombre||rp.descripcion||'').trim(); if(nom) productosSet[nom]=true; }
+      }catch(e){}
+      for (var rr=2; rr<=last; rr++){
+        var rowD = shD.getRange(rr,1,1,headD.length).getValues()[0];
+        if (String(rowD[idxIdF]) === id_factura){
+          var desc = (idxDesc>=0?rowD[idxDesc]:'');
+          var cant = Number(idxCant>=0?rowD[idxCant]:0);
+          if (productosSet[desc]){ __V_updateProductoStock__(String(desc||''), String(sucFac||''), Number(cant||0)); }
+        }
+      }
+    }catch(e){}
+
+    // Eliminar líneas de detalle
+    var shD = _getSheetDetalle_();
+    var headD = __V_head__(shD);
+    var idxIdF = __V_idxOfAny__(headD, ['id_factura','id','factura']);
+    var last = shD.getLastRow();
+    // Recorremos de abajo hacia arriba para eliminar
+    for (var rr=last; rr>=2; rr--){
+      var val = shD.getRange(rr,1,1,headD.length).getValues()[0];
+      if (String(val[idxIdF]) === id_factura){
+        shD.deleteRow(rr);
+      }
+    }
+    // Eliminar factura
+    shF.deleteRow(rowIndex);
+    return JSON.stringify({ ok:true }); // RESTORE_STOCK_ON_DELETE
+  }catch(err){
+    return JSON.stringify({ ok:false, message:'Error al eliminar venta: '+err });
+  }
+}
+
+
+/** Actualiza cabecera y detalle de una venta si se permite por rol/tiempo. payload incluye id_factura y campos a actualizar. */
+function actualizarVenta(payload, rol){
+  try{
+    var obj = (typeof payload==='string') ? JSON.parse(payload) : (payload||{});
+    var id = String(obj.id_factura||obj.id||'').trim();
+    if (!id) return JSON.stringify({ ok:false, message:'id_factura requerido' });
+    var shF = _getSheetFacturas_();
+    var shD = _getSheetDetalle_();
+    var headF = __V_head__(shF);
+    var headD = __V_head__(shD);
+    var mapF = __V_headerIndexMap__(headF);
+    // Buscar fila y fecha
+    var idxIdF = (mapF['id_factura']!=null) ? mapF['id_factura'] :
+                 (mapF['id']!=null) ? mapF['id'] :
+                 (mapF['factura']!=null) ? mapF['factura'] : -1;
+    var idxFechaF = (mapF['fecha']!=null) ? mapF['fecha'] :
+                    (mapF['fecharegistro']!=null) ? mapF['fecharegistro'] :
+                    (mapF['createdat']!=null) ? mapF['createdat'] : -1;
+    var lastF = shF.getLastRow();
+    var rowIndex = -1; var fechaVal = '';
+    for (var r=2; r<=lastF; r++){
+      var row = shF.getRange(r,1,1,headF.length).getValues()[0];
+      if (String(row[idxIdF]) === id){
+        rowIndex = r; fechaVal = (idxFechaF>=0 ? row[idxFechaF] : '');
+        break;
+      }
+    }
+    if (rowIndex < 0) return JSON.stringify({ ok:false, message:'No encontrado' });
+    if (!__V_puedeEditarFactura__(fechaVal, rol)){
+      return JSON.stringify({ ok:false, message:'Fuera de ventana de edición (5 min) para rol '+rol });
+    }
+    // Construir fila actualizada (conservar fecha si no viene)
+    var rowF = shF.getRange(rowIndex,1,1,headF.length).getValues()[0];
+    for (var c=0;c<headF.length;c++){
+      var k = __V_normalizeHeader__(headF[c]);
+      if (k==='empleado') rowF[c] = obj.empleado || rowF[c];
+      else if (k==='metodo_pago' || k==='metododepago' || k==='metodopago') rowF[c] = obj.metodo_pago || rowF[c];
+      else if (k==='descuento') rowF[c] = Number(obj.descuento||0);
+      else if (k==='sub_total' || k==='subtotal') rowF[c] = Number(obj.sub_total||0);
+      else if (k==='total') rowF[c] = Number(obj.total||0);
+      // usuario, sucursal, fecha se preservan
+    }
+    shF.getRange(rowIndex,1,1,headF.length).setValues([rowF]);
+    // Reemplazar detalle
+    var mapD = __V_headerIndexMap__(headD);
+    var idxIdFacturaD = (mapD['id_factura']!=null) ? mapD['id_factura'] :
+                        (mapD['id']!=null) ? mapD['id'] :
+                        (mapD['factura']!=null) ? mapD['factura'] : -1;
+    // Revertir stock de productos según detalle anterior
+    var lastD = shD.getLastRow();
+    for (var rr=lastD; rr>=2; rr--){
+      var rowD = shD.getRange(rr,1,1,headD.length).getValues()[0];
+      if (String(rowD[idxIdFacturaD]) === id){
+        var mapOld = __V_headerIndexMap__(headD);
+        var idxDescOld = (mapOld['descripcion']!=null)?mapOld['descripcion']:(mapOld['producto_servicio']!=null?mapOld['producto_servicio']:-1);
+        var idxCantOld = (mapOld['cantidad']!=null)?mapOld['cantidad']:-1;
+        var descOld = (idxDescOld>=0?rowD[idxDescOld]:'');
+        var cantOld = Number(idxCantOld>=0?rowD[idxCantOld]:0);
+        __V_updateProductoStock__(String(descOld||''), String(rowF[(mapF['sucursal']!=null?mapF['sucursal']:(mapF['nombresucursal']!=null?mapF['nombresucursal']:-1))]||''), Number(cantOld||0));
+        shD.deleteRow(rr);
+      }
+    }
+    // Insertar nuevos
+    var items = obj.items || [];
+    if (items && items.length){
+      // id_detalle correlativo global
+      var nextDetId = __V_nextIdGeneric__(shD, ['id_detalle','iddetalle']);
+      var rowsD = [];
+      for (var i=0;i<items.length;i++){
+        var it = items[i];
+        var rowN = new Array(headD.length);
+        for (var c2=0;c2<headD.length;c2++){
+          var kd = __V_normalizeHeader__(headD[c2]);
+          var vd = '';
+          if (kd==='id_detalle' || kd==='iddetalle') vd = nextDetId++;
+          else if (kd==='id_factura' || kd==='idfactura' || kd==='idventa') vd = id;
+          else if (kd==='descripcion' || kd==='producto_servicio') vd = it.descripcion || '';
+          else if (kd==='cantidad') vd = Number(it.cantidad||0);
+          else if (kd==='precio') vd = Number(it.precio||0);
+          else if (kd==='sub_total' || kd==='subtotal') vd = Number((it.cantidad||0)*(it.precio||0));
+          else if (kd==='total' || kd==='totallinea' || kd==='total_linea') vd = Number((it.cantidad||0)*(it.precio||0));
+          else vd = '';
+          rowN[c2] = vd;
+        }
+        rowsD.push(rowN);
+      }
+      if (rowsD.length) shD.getRange(shD.getLastRow()+1,1,rowsD.length,headD.length).setValues(rowsD);
+    }
+    // Aplicar stock para nuevos productos
+    try{
+      for (var k=0;k<items.length;k++){
+        var it2 = items[k]||{};
+        if (String(it2.tipo||'').toLowerCase()==='producto'){
+          __V_updateProductoStock__(String(it2.descripcion||''), String(rowF[(mapF['sucursal']!=null?mapF['sucursal']:(mapF['nombresucursal']!=null?mapF['nombresucursal']:-1))]||''), -Number(it2.cantidad||0));
+        }
+      }
+    }catch(e){}
+    return JSON.stringify({ ok:true }); // RESTORE_STOCK_ON_DELETE
+  }catch(err){
+    return JSON.stringify({ ok:false, message:'Error al actualizar venta: '+err });
+  }
+}
+
+/** Listar empleados activos; si se pasa sucursal, filtra por ella. */
+function listarEmpleadosActivos(sucursal){
+  try{
+    sucursal = String(sucursal||'').trim();
+    var sh = obtenerSheet((typeof env_==='function' && env_().SH_EMPLEADOS) || 'empleados');
+    var data = sh.getDataRange().getValues();
+    if (!data || data.length < 2) return JSON.stringify({ ok:true, data: [] });
+    var head = data[0];
+    var m = __V_headerIndexMap__(head);
+    var idxNom = (m['nombre_empleado']!=null) ? m['nombre_empleado']
+               : (m['nombre']!=null) ? m['nombre'] : -1;
+    var idxSuc = (m['nombresucursal']!=null) ? m['nombresucursal']
+               : (m['sucursal']!=null) ? m['sucursal']
+               : (m['nombre_sucursal']!=null) ? m['nombre_sucursal'] : -1;
+    var idxEst = (m['estado']!=null) ? m['estado'] : -1;
+    var out = [];
+    for (var r=1;r<data.length;r++){
+      var row = data[r];
+      var est = String(idxEst>=0 ? row[idxEst] : 'Activo').toLowerCase().trim();
+      if (est !== 'activo') continue;
+      var nom = String(idxNom>=0 ? row[idxNom] : '').trim();
+      var suc = String(idxSuc>=0 ? row[idxSuc] : '').trim();
+      if (sucursal && suc && suc !== sucursal) continue;
+      if (nom) out.push({ nombre: nom, sucursal: suc });
+    }
+    return JSON.stringify({ ok:true, data: out });
+  }catch(err){
+    return JSON.stringify({ ok:false, message: 'Error al listar empleados: '+err });
   }
 }

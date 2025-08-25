@@ -11,6 +11,49 @@
     color:#C0C0C0 !important;
   }
   .modal-dark .ant-table-thead > tr > th{ color:#C0C0C0 !important; }
+
+  /* ===== Texto negro solo en la sección Ítems del modal ===== */
+  .items-font-black,
+  .items-font-black .ant-table,
+  .items-font-black .ant-table-container,
+  .items-font-black .ant-table-thead > tr > th,
+  .items-font-black .ant-table-tbody > tr > td,
+  .items-font-black .ant-input,
+  .items-font-black .ant-input-number-input,
+  .items-font-black .ant-select-selector,
+  .items-font-black .ant-select-selection-item,
+  .items-font-black .ant-select-selection-placeholder,
+  .items-font-black .ant-select-arrow {
+    color: #000 !important;
+  }
+  .items-font-black .ant-select-selector,
+  .items-font-black .ant-input,
+  .items-font-black .ant-input-number,
+  .items-font-black .ant-input-number-input {
+    background: #fff !important;
+  }
+  .items-font-black ::placeholder{
+    color:#000 !important;
+    opacity:.65;
+  }
+
+
+  /* === Forzar texto negro también en Cant. y Precio (InputNumber) === */
+  .items-font-black .ant-input-number,
+  .items-font-black .ant-input-number-input,
+  .items-font-black .ant-input-number input,
+  .items-font-black .ant-input-number-handler-wrap,
+  .items-font-black .ant-input-number-handler {
+    color: #000 !important;
+  }
+  /* como medida total: cualquier descendiente dentro del wrapper */
+  .items-font-black * { color: #000 !important; }
+  /* fondo claro en inputs numéricos para contraste */
+  .items-font-black .ant-input-number,
+  .items-font-black .ant-input-number-input {
+    background: #fff !important;
+  }
+
 </style>
 <div id="VentasView"></div>
 <script type="text/babel">
@@ -29,6 +72,7 @@ function Ventas(){
   const [loading, setLoading] = useState(false);
   const [detalle, setDetalle] = useState([]);
   const [detalleOpen, setDetalleOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [filters, setFilters] = useState({ sucursal: undefined, empleado: undefined });
   const [sucursales, setSucursales] = useState([]);
   const [empleados, setEmpleados] = useState([]);
@@ -38,7 +82,7 @@ function Ventas(){
   const [form] = Form.useForm();
   const [lineas, setLineas] = useState([]);
   const [opciones, setOpciones] = useState([]);
-  const [clientes, setClientes] = useState([]);
+  const [cacheItems, setCacheItems] = useState({ servicios:[], productos:[] });
 
   // ===== Filtrado frontend =====
   const dataFiltrada = useMemo(()=>{
@@ -84,8 +128,8 @@ function Ventas(){
           var now = Date.now();
           var norm = arr.map(function(x){
             var t = x._createdAt || x.fecha || x.Fecha;
-            var ms = (t ? new Date(t).getTime() : NaN);
-            var editable = isFinite(ms) ? (now - ms) < (5*60*1000) : true;
+            var ms = (t && typeof t.getTime === 'function') ? t.getTime() : Date.parse(t);
+            var editable = isSuper ? true : (isFinite(ms) ? (now - ms) < (5*60*1000) : true);
             return Object.assign({}, x, { _editable: editable });
           });
           setFacturas(norm);
@@ -121,24 +165,21 @@ function Ventas(){
         }catch(_){ setEmpleados([]); }
       })
       .withFailureHandler(function(){ setEmpleados([]); })
-      .listarEmpleadosActivos();
-  }
-  function cargarClientes(){
-    google.script.run
-      .withSuccessHandler(function(res){
-        try{
-          var r = (typeof res==='string') ? JSON.parse(res) : res;
-          setClientes((r && r.ok && r.data) ? r.data : []);
-        }catch(_){ setClientes([]); }
-      })
-      .withFailureHandler(function(){ setClientes([]); })
-      .listarClientesActivos();
+      .listarEmpleadosActivos(String(ctx.sucursal||''));
   }
 
   useEffect(function(){
-    cargarContexto(); cargarSucursales(); cargarEmpleados(); cargarClientes();
+    cargarContexto(); cargarSucursales();
   }, []);
   useEffect(cargarFacturas, [ctx.sucursal]);
+  useEffect(cargarEmpleados, [ctx.sucursal]);
+  useEffect(function(){
+    if (!ctx.sucursal) return;
+    google.script.run
+      .withSuccessHandler(function(res){ try{ var r=(typeof res==='string')?JSON.parse(res):res; if (r&&r.ok){ setCacheItems({servicios:r.servicios||[], productos:r.productos||[]}); } }catch(e){ setCacheItems({servicios:[], productos:[]}); }})
+      .withFailureHandler(function(){ setCacheItems({servicios:[], productos:[]}); })
+      .bootstrapVentas(String(ctx.sucursal||''));
+  }, [ctx.sucursal]);
 
   // ===== Detalle =====
   const detCols = [
@@ -171,8 +212,15 @@ function Ventas(){
 
   // ===== Nueva venta =====
   let buscarItemsTimer;
-  function buscarItems(q){
+  function buscarItems(q, tipo){
     if (buscarItemsTimer) { clearTimeout(buscarItemsTimer); }
+    try{
+      var base = [];
+      if (!tipo || String(tipo).toLowerCase()==='servicio') base = base.concat(cacheItems.servicios||[]);
+      if (!tipo || String(tipo).toLowerCase()==='producto') base = base.concat(cacheItems.productos||[]);
+      if (q){ var qq=String(q||'').toLowerCase(); base = base.filter(it=> String(it.descripcion||'').toLowerCase().includes(qq)); }
+      if (base.length){ setOpciones(base); }
+    }catch(_){}
     buscarItemsTimer = setTimeout(function(){
     google.script.run
       .withSuccessHandler(function(res){
@@ -183,38 +231,51 @@ function Ventas(){
         }catch(_){ setOpciones([]); }
       })
       .withFailureHandler(function(){ setOpciones([]); })
-      .buscarItemsVenta(String(q||''), ctx.sucursal||'');
+      .buscarItemsVenta(String(q||''), ctx.sucursal || '', String(tipo||''));
     }, 180);
   }
   function addLinea(){ setLineas(prev => prev.concat([{ tipo:'', descripcion:'', cantidad:1, precio:0 }])); }
+  function addLineaTipo(tipo){ setLineas(prev => prev.concat([{ tipo: String(tipo||'').toLowerCase(), descripcion:'', cantidad:1, precio:0 }])); }
   function rmLinea(idx){ setLineas(prev => prev.filter((_,i)=>i!==idx)); }
   function setLinea(idx, patch){ setLineas(prev => prev.map((ln,i)=> i===idx ? ({...ln, ...patch}) : ln)); }
   const totalVenta = useMemo(()=> (lineas||[]).reduce((acc,ln)=> acc + Number((ln.cantidad||0)*(ln.precio||0)), 0), [lineas]);
 
-  function abrirNuevo(){ setModalOpen(true); form.resetFields(); setLineas([]); }
+  function abrirNuevo(){ setModalOpen(true); form.resetFields(); setLineas([]); setEditingId(null); }
 
+  
+  
   function guardarVenta(values){
     if (!lineas.length) { message.warning('Agrega al menos un ítem'); return; }
-    const nextId = Math.max(0, ...((facturas||[]).map(f => Number(f.id_factura||0)).filter(n=>!isNaN(n)))) + 1;
-    const payload = {
+
+    const payloadBase = {
       usuario: ctx.usuario,
       sucursal: ctx.sucursal,
-      cliente: values.cliente || '',
       empleado: values.empleado || '',
       metodo_pago: values.metodo_pago || '',
       descuento: Number(values.descuento || 0),
-      items: lineas.map(x => ({ tipo: x.tipo || '', descripcion: x.descripcion || '', cantidad: Number(x.cantidad || 0), precio: Number(x.precio || 0) })),
-      id_factura: nextId
+      items: lineas.map(x => ({
+        tipo: x.tipo || '',
+        descripcion: x.descripcion || '',
+        cantidad: Number(x.cantidad || 0),
+        precio: Number(x.precio || 0)
+      })),
     };
-    const hide = message.loading('Guardando venta...', 0);
-    google.script.run
+
+    // Calcular totales
+    const subTotal = lineas.reduce((acc, x) => acc + Number(x.cantidad||0)*Number(x.precio||0), 0);
+    payloadBase.sub_total = subTotal;
+    payloadBase.total = subTotal - Number(payloadBase.descuento||0);
+
+    const hide = message.loading(editingId ? 'Actualizando venta...' : 'Guardando venta...', 0);
+    const run = google.script.run
       .withSuccessHandler(function(res){
         hide();
         try{
           var r = (typeof res==='string') ? JSON.parse(res) : res;
           if (r && r.ok){
-            message.success('Venta registrada');
+            message.success(editingId ? 'Venta actualizada' : 'Venta registrada');
             setModalOpen(false);
+            setEditingId(null);
             cargarFacturas();
           }else{
             Modal.error({ title:'Error', content: (r && r.message) || 'No se pudo guardar' });
@@ -223,17 +284,59 @@ function Ventas(){
           Modal.error({ title:'Error', content: String(err) });
         }
       })
-      .withFailureHandler(function(err){ hide(); Modal.error({ title:'Error', content:String((err&&err.message)||err) }); })
-      .crearVenta(payload);
+      .withFailureHandler(function(err){ hide(); Modal.error({ title:'Error', content:String((err&&err.message)||err) }); });
+
+    if (editingId){
+      run.actualizarVenta(Object.assign({ id_factura: editingId }, payloadBase), String(rol||''));
+    }else{
+      run.crearVenta(payloadBase);
+    }
   }
 
-  const cols = [
+  function abrirEditar(rec){
+    setEditingId(rec.id_factura);
+    setModalOpen(true);
+    form.setFieldsValue({ empleado: rec.empleado || '', metodo_pago: rec.metodo_pago || '', descuento: rec.descuento || 0 });
+    // Cargar detalle con tipos si es posible
+    setLineas([]);
+    google.script.run
+      .withSuccessHandler(function(res){
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          var arr = (r && r.ok && r.data) ? r.data : [];
+          setLineas(arr.map(function(x){ return ({ tipo:x.tipo||'', descripcion:x.descripcion||'', cantidad:Number(x.cantidad||0), precio:Number(x.precio||0) }); }));
+        }catch(_){}
+      })
+      .withFailureHandler(function(err){ console && console.error && console.error(err); })
+      .listarDetalleFactura(String(rec.id_factura));
+  }
+
+  function confirmarEliminar(rec){
+    Modal.confirm({
+      title:'Eliminar venta',
+      content:'Esta acción no se puede deshacer',
+      onOk: function(){
+        const hide = message.loading('Eliminando...', 0);
+        google.script.run
+          .withSuccessHandler(function(res){
+            hide();
+            try{
+              var r = (typeof res==='string') ? JSON.parse(res) : res;
+              if (r && r.ok){ message.success('Venta eliminada'); cargarFacturas(); }
+              else { Modal.error({title:'Error', content:(r && r.message)||'No se pudo eliminar'}); }
+            }catch(e){ Modal.error({title:'Error', content:String(e)}); }
+          })
+          .withFailureHandler(function(err){ hide(); Modal.error({title:'Error', content:String((err&&err.message)||err)}); })
+          .eliminarVenta(String(rec.id_factura), String(rol||''));
+      }
+    });
+  }
+const cols = [
     { title:'Detalle', key:'ver', render:(_,rec)=>(<Button size="small" icon={<icons.EyeOutlined/>} onClick={()=>verDetalle(rec)}>Ver detalle</Button>) },
     { title:'Factura', dataIndex:'id_factura', key:'id_factura', width: 90 },
     { title:'Fecha', dataIndex:'fecha', key:'fecha' },
     { title:'Sucursal', dataIndex:'sucursal', key:'sucursal' },
     { title:'Usuario', dataIndex:'usuario', key:'usuario' },
-    { title:'Cliente', dataIndex:'cliente', key:'cliente' },
     { title:'Empleado', dataIndex:'empleado', key:'empleado' },
     { title:'Sub Total', dataIndex:'sub_total', key:'sub_total', align:'right', render:v=>'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2}) },
     { title:'Descuento', dataIndex:'descuento', key:'descuento', align:'right', render:v=>'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2}) },
@@ -244,8 +347,8 @@ function Ventas(){
         const sz = 18;
         return (
           <Space size="middle">
-            <Button type="text" disabled={disabled} icon={<icons.EditOutlined style={{fontSize:sz}}/>} onClick={()=>message.info('Edición dentro de 5 min')}/>
-            <Button type="text" danger disabled={disabled} icon={<icons.DeleteOutlined style={{fontSize:sz}}/>} onClick={()=>message.info('Eliminación dentro de 5 min')}/>
+            <Button type="text" disabled={disabled} icon={<icons.EditOutlined style={{fontSize:sz}}/>} onClick={()=> disabled ? message.info('Edición dentro de 5 min') : abrirEditar(rec)}/>
+            <Button type="text" danger disabled={disabled} icon={<icons.DeleteOutlined style={{fontSize:sz}}/>} onClick={()=> disabled ? message.info('Eliminación dentro de 5 min') : confirmarEliminar(rec)}/>
           </Space>
         );
     }}
@@ -312,14 +415,7 @@ function Ventas(){
       >
         <Form layout="vertical" form={form} onFinish={guardarVenta}>
           <Row gutter={[12,12]}>
-            <Col xs={24} md={8}>
-              <Form.Item label="Cliente" name="cliente" rules={[{required:true,message:'Seleccione cliente'}]}>
-                <Select showSearch placeholder="Seleccione" optionFilterProp="children">
-                  {clientes.map(c => <Select.Option key={c.id_cliente||c.nombre} value={c.nombre}>{c.nombre}</Select.Option>)}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col xs={24} md={8}>
+<Col xs={24} md={8}>
               <Form.Item label="Empleado" name="empleado" rules={[{required:true,message:'Seleccione empleado'}]}>
                 <Select showSearch placeholder="Seleccione" optionFilterProp="children">
                   {empleados.map(e => <Select.Option key={e.nombre} value={e.nombre}>{e.nombre}</Select.Option>)}
@@ -342,34 +438,36 @@ function Ventas(){
             </Col>
           </Row>
 
-          <div style={{fontWeight:600, marginTop:8, marginBottom:8}}>Ítems</div>
-          <Button type="dashed" icon={<icons.PlusOutlined/>} onClick={addLinea} style={{marginBottom:8}}>Agregar</Button>
-          <div style={{background:'rgba(0,0,0,0.35)', padding:8, borderRadius:8}}>
+          <div style={{fontWeight:600, marginTop:8, marginBottom:8, color:'#000'}}>Ítems</div>
+          <div style={{display:"flex", gap:8, marginBottom:8}}>
+            <Button type="dashed" icon={<icons.PlusOutlined/>} onClick={()=>addLineaTipo("servicio")}>Agregar servicio</Button>
+            <Button type="dashed" icon={<icons.PlusOutlined/>} onClick={()=>addLineaTipo("producto")}>Agregar producto</Button>
+          </div>
+          <div className="items-font-black" style={{background:'rgba(0,0,0,0.35)', padding:8, borderRadius:8}}>
           <Table
             size="small"
             dataSource={lineas.map((ln,i)=>({...ln, key:i}))}
             pagination={false}
             columns={[
-              { title:'Tipo', dataIndex:'tipo', render:(v,rec,idx)=>(
-                <Select value={v||undefined} style={{width:120}} onChange={val=>setLinea(idx,{tipo:val})}>
-                  <Select.Option value="servicio">Servicio</Select.Option>
-                  <Select.Option value="producto">Producto</Select.Option>
-                </Select>
+              { title:'Tipo', dataIndex:'tipo', width:120, render:(v)=>(
+                <span style={{display:'inline-block', padding:'2px 10px', borderRadius:8, background:'#f0f2f5', fontWeight:500}}>
+                  {(v||'').charAt(0).toUpperCase() + (v||'').slice(1)}
+                </span>
               )},
               { title:'Descripción', dataIndex:'descripcion', width:300, render:(v,rec,idx)=>(
                 <Select
                   showSearch
                   value={v||undefined}
-                  placeholder="Buscar y seleccionar…"
+                  placeholder="Buscar y seleccionar…" onFocus={()=>buscarItems('', (rec && rec.tipo) || undefined)}
                   style={{width:'100%'}}
-                  onSearch={buscarItems}
+                  onSearch={(val)=>buscarItems(val, (rec && rec.tipo) || undefined)}
                   filterOption={false}
                   onChange={(val, opt)=>{
                     const sel = (opt && opt.item) || {};
                     setLinea(idx, { descripcion: val, tipo: sel.tipo || rec.tipo, precio: sel.precio || rec.precio });
                   }}
                 >
-                  {opciones.map(it => (
+                  {opciones.filter(it => !rec || !rec.tipo || it.tipo === rec.tipo).map(it => (
                     <Select.Option key={it.tipo+':'+it.descripcion} value={it.descripcion} item={it}>
                       [{it.tipo}] {it.descripcion} — L.{Number(it.precio||0).toFixed(2)}
                     </Select.Option>
@@ -507,3 +605,4 @@ function Ventas(){
 }
 ReactDOM.render(<Ventas />, document.getElementById('VentasView'));
 </script>
+
