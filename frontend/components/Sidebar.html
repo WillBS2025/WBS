@@ -72,10 +72,6 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
         </Menu.SubMenu>
         )}
 
-        <Menu.Item key="5" icon={<icons.ShoppingCartOutlined />}>
-          <Link to="/Ventas">Ventas</Link>
-        </Menu.Item>
-
         {/* ================================
           INVENTARIO CON SUBMENÚ (2 SUBRAMA)
            ================================ */}
@@ -98,6 +94,10 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
             </Link>
           </Menu.Item>
         </Menu.SubMenu>
+
+        <Menu.Item key="5" icon={<icons.ShoppingCartOutlined />}>
+          <Link to="/Ventas">Ventas</Link>
+        </Menu.Item>
 
         {isSuperAdmin && (
         <Menu.Item key="gastos" icon={<icons.DollarOutlined />}>

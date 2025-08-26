@@ -36,5 +36,8 @@ function env_(){
 
             // HOJA DETALLE FACTURA
             SH_DETALLE_FACTURA: "detalle_factura",
+
+            // HOJA DESCUENTOS
+            SH_DESCUENTOS: "descuentos",
     };
 }

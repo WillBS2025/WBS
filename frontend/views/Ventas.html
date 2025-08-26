@@ -1,4 +1,3 @@
-
 <style>
   .modal-dark .ant-modal-content{ background: rgba(0,0,0,0.70); color:#C0C0C0; }
   .modal-dark .ant-modal-header{ background: rgba(0,0,0,0.70); border-bottom: 1px solid rgba(255,255,255,0.12); }
@@ -36,9 +35,6 @@
     color:#000 !important;
     opacity:.65;
   }
-
-
-  /* === Forzar texto negro también en Cant. y Precio (InputNumber) === */
   .items-font-black .ant-input-number,
   .items-font-black .ant-input-number-input,
   .items-font-black .ant-input-number input,
@@ -46,15 +42,11 @@
   .items-font-black .ant-input-number-handler {
     color: #000 !important;
   }
-  /* como medida total: cualquier descendiente dentro del wrapper */
   .items-font-black * { color: #000 !important; }
-  /* fondo claro en inputs numéricos para contraste */
   .items-font-black .ant-input-number,
-  .items-font-black .ant-input-number-input {
-    background: #fff !important;
-  }
-
+  .items-font-black .ant-input-number-input { background: #fff !important; }
 </style>
+
 <div id="VentasView"></div>
 <script type="text/babel">
 function Ventas(){
@@ -77,12 +69,28 @@ function Ventas(){
   const [sucursales, setSucursales] = useState([]);
   const [empleados, setEmpleados] = useState([]);
 
-  // ===== Nueva venta (modal) =====
+  // ===== Nueva venta =====
   const [modalOpen, setModalOpen] = useState(false);
   const [form] = Form.useForm();
   const [lineas, setLineas] = useState([]);
   const [opciones, setOpciones] = useState([]);
   const [cacheItems, setCacheItems] = useState({ servicios:[], productos:[] });
+
+  // Descuentos activos para el modal
+  const [descuentosActivos, setDescuentosActivos] = useState([]);
+  const [descuentoSel, setDescuentoSel] = useState(null); // id_descuento seleccionado
+
+  function cargarDescuentosActivos(){
+    google.script.run
+      .withSuccessHandler(function(res){
+        try{
+          var r = (typeof res==='string') ? JSON.parse(res) : res;
+          setDescuentosActivos((r && r.ok && r.data) ? r.data : []);
+        }catch(_){ setDescuentosActivos([]); }
+      })
+      .withFailureHandler(function(){ setDescuentosActivos([]); })
+      .listarDescuentosActivosVenta();
+  }
 
   // ===== Filtrado frontend =====
   const dataFiltrada = useMemo(()=>{
@@ -181,6 +189,20 @@ function Ventas(){
       .bootstrapVentas(String(ctx.sucursal||''));
   }, [ctx.sucursal]);
 
+  // Cargar descuentos activos cuando abro el modal
+  useEffect(function(){
+    if (modalOpen) cargarDescuentosActivos();
+  }, [modalOpen]);
+
+  // Recalcular monto de descuento cuando cambia selección o líneas
+  useEffect(function(){
+    if (descuentoSel == null) return; // no tocar si no hay selección
+    const d = (descuentosActivos||[]).find(x => String(x.id_descuento) === String(descuentoSel));
+    const sub = (lineas||[]).reduce((acc,ln)=> acc + Number(ln.cantidad||0)*Number(ln.precio||0), 0);
+    const factor = d ? (typeof d.factor === 'number' ? d.factor : (Number(d.porcentaje||0) > 1 ? Number(d.porcentaje)/100 : Number(d.porcentaje||0))) : 0;
+    form.setFieldsValue({ descuento: Number(sub * factor) });
+  }, [lineas, descuentoSel, descuentosActivos]);
+
   // ===== Detalle =====
   const detCols = [
     { title:'N.', key:'n', width: 60, align:'center', render:(_, __, idx)=> idx+1 },
@@ -240,10 +262,8 @@ function Ventas(){
   function setLinea(idx, patch){ setLineas(prev => prev.map((ln,i)=> i===idx ? ({...ln, ...patch}) : ln)); }
   const totalVenta = useMemo(()=> (lineas||[]).reduce((acc,ln)=> acc + Number((ln.cantidad||0)*(ln.precio||0)), 0), [lineas]);
 
-  function abrirNuevo(){ setModalOpen(true); form.resetFields(); setLineas([]); setEditingId(null); }
+  function abrirNuevo(){ setModalOpen(true); form.resetFields(); setLineas([]); setEditingId(null); setDescuentoSel(null); }
 
-  
-  
   function guardarVenta(values){
     if (!lineas.length) { message.warning('Agrega al menos un ítem'); return; }
 
@@ -252,7 +272,7 @@ function Ventas(){
       sucursal: ctx.sucursal,
       empleado: values.empleado || '',
       metodo_pago: values.metodo_pago || '',
-      descuento: Number(values.descuento || 0),
+      descuento: Number(values.descuento || 0), // monto calculado
       items: lineas.map(x => ({
         tipo: x.tipo || '',
         descripcion: x.descripcion || '',
@@ -261,7 +281,6 @@ function Ventas(){
       })),
     };
 
-    // Calcular totales
     const subTotal = lineas.reduce((acc, x) => acc + Number(x.cantidad||0)*Number(x.precio||0), 0);
     payloadBase.sub_total = subTotal;
     payloadBase.total = subTotal - Number(payloadBase.descuento||0);
@@ -296,8 +315,8 @@ function Ventas(){
   function abrirEditar(rec){
     setEditingId(rec.id_factura);
     setModalOpen(true);
+    setDescuentoSel(null); // respetar el monto existente si no se toca
     form.setFieldsValue({ empleado: rec.empleado || '', metodo_pago: rec.metodo_pago || '', descuento: rec.descuento || 0 });
-    // Cargar detalle con tipos si es posible
     setLineas([]);
     google.script.run
       .withSuccessHandler(function(res){
@@ -331,7 +350,8 @@ function Ventas(){
       }
     });
   }
-const cols = [
+
+  const cols = [
     { title:'Detalle', key:'ver', render:(_,rec)=>(<Button size="small" icon={<icons.EyeOutlined/>} onClick={()=>verDetalle(rec)}>Ver detalle</Button>) },
     { title:'Factura', dataIndex:'id_factura', key:'id_factura', width: 90 },
     { title:'Fecha', dataIndex:'fecha', key:'fecha' },
@@ -415,7 +435,7 @@ const cols = [
       >
         <Form layout="vertical" form={form} onFinish={guardarVenta}>
           <Row gutter={[12,12]}>
-<Col xs={24} md={8}>
+            <Col xs={24} md={8}>
               <Form.Item label="Empleado" name="empleado" rules={[{required:true,message:'Seleccione empleado'}]}>
                 <Select showSearch placeholder="Seleccione" optionFilterProp="children">
                   {empleados.map(e => <Select.Option key={e.nombre} value={e.nombre}>{e.nombre}</Select.Option>)}
@@ -431,9 +451,27 @@ const cols = [
                 </Select>
               </Form.Item>
             </Col>
+
             <Col xs={24} md={8}>
-              <Form.Item label="Descuento" name="descuento" initialValue={0}>
-                <InputNumber min={0} style={{width:'100%'}} />
+              {/* Select por NOMBRE con solo activos */}
+              <Form.Item label="Descuento" name="descuento_nombre">
+                <Select
+                  allowClear
+                  placeholder="Seleccione"
+                  value={descuentoSel}
+                  onFocus={cargarDescuentosActivos}
+                  onChange={(val)=> setDescuentoSel(val || null)}
+                >
+                  {descuentosActivos.map(d => (
+                    <Select.Option key={String(d.id_descuento)} value={String(d.id_descuento)}>
+                      {d.nombre_descuento}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </Form.Item>
+              {/* campo oculto donde guardamos el monto */}
+              <Form.Item name="descuento" initialValue={0} hidden>
+                <InputNumber />
               </Form.Item>
             </Col>
           </Row>
@@ -444,51 +482,50 @@ const cols = [
             <Button type="dashed" icon={<icons.PlusOutlined/>} onClick={()=>addLineaTipo("producto")}>Agregar producto</Button>
           </div>
           <div className="items-font-black" style={{background:'rgba(0,0,0,0.35)', padding:8, borderRadius:8}}>
-          <Table
-            size="small"
-            dataSource={lineas.map((ln,i)=>({...ln, key:i}))}
-            pagination={false}
-            columns={[
-              { title:'Tipo', dataIndex:'tipo', width:120, render:(v)=>(
-                <span style={{display:'inline-block', padding:'2px 10px', borderRadius:8, background:'#f0f2f5', fontWeight:500}}>
-                  {(v||'').charAt(0).toUpperCase() + (v||'').slice(1)}
-                </span>
-              )},
-              { title:'Descripción', dataIndex:'descripcion', width:300, render:(v,rec,idx)=>(
-                <Select
-                  showSearch
-                  value={v||undefined}
-                  placeholder="Buscar y seleccionar…" onFocus={()=>buscarItems('', (rec && rec.tipo) || undefined)}
-                  style={{width:'100%'}}
-                  onSearch={(val)=>buscarItems(val, (rec && rec.tipo) || undefined)}
-                  filterOption={false}
-                  onChange={(val, opt)=>{
-                    const sel = (opt && opt.item) || {};
-                    setLinea(idx, { descripcion: val, tipo: sel.tipo || rec.tipo, precio: sel.precio || rec.precio });
-                  }}
-                >
-                  {opciones.filter(it => !rec || !rec.tipo || it.tipo === rec.tipo).map(it => (
-                    <Select.Option key={it.tipo+':'+it.descripcion} value={it.descripcion} item={it}>
-                      [{it.tipo}] {it.descripcion} — L.{Number(it.precio||0).toFixed(2)}
-                    </Select.Option>
-                  ))}
-                </Select>
-              )},
-              { title:'Cant.', dataIndex:'cantidad', align:'right', render:(v,rec,idx)=>(
-                <InputNumber min={1} value={v||1} onChange={val=>setLinea(idx,{cantidad:val||1})}/>
-              )},
-              { title:'Precio', dataIndex:'precio', align:'right', render:(v,rec,idx)=>(
-                <InputNumber min={0} value={v||0} onChange={val=>setLinea(idx,{precio:val||0})}/>
-              )},
-              { title:'Total', key:'total', align:'right', render:(_,rec)=> 'L.'+Number((rec.cantidad||0)*(rec.precio||0)).toFixed(2) },
-              { title:'', key:'rm', align:'center', render:(_, __, idx)=>(
-                <Button type="text" danger icon={<icons.DeleteOutlined/>} onClick={()=>rmLinea(idx)} />
-              )},
-            ]}
-          />
-
-          
+            <Table
+              size="small"
+              dataSource={lineas.map((ln,i)=>({...ln, key:i}))}
+              pagination={false}
+              columns={[
+                { title:'Tipo', dataIndex:'tipo', width:120, render:(v)=>(
+                  <span style={{display:'inline-block', padding:'2px 10px', borderRadius:8, background:'#f0f2f5', fontWeight:500}}>
+                    {(v||'').charAt(0).toUpperCase() + (v||'').slice(1)}
+                  </span>
+                )},
+                { title:'Descripción', dataIndex:'descripcion', width:300, render:(v,rec,idx)=>(
+                  <Select
+                    showSearch
+                    value={v||undefined}
+                    placeholder="Buscar y seleccionar…" onFocus={()=>buscarItems('', (rec && rec.tipo) || undefined)}
+                    style={{width:'100%'}}
+                    onSearch={(val)=>buscarItems(val, (rec && rec.tipo) || undefined)}
+                    filterOption={false}
+                    onChange={(val, opt)=>{
+                      const sel = (opt && opt.item) || {};
+                      setLinea(idx, { descripcion: val, tipo: sel.tipo || rec.tipo, precio: sel.precio || rec.precio });
+                    }}
+                  >
+                    {opciones.filter(it => !rec || !rec.tipo || it.tipo === rec.tipo).map(it => (
+                      <Select.Option key={it.tipo+':'+it.descripcion} value={it.descripcion} item={it}>
+                        [{it.tipo}] {it.descripcion} — L.{Number(it.precio||0).toFixed(2)}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                )},
+                { title:'Cant.', dataIndex:'cantidad', align:'right', render:(v,rec,idx)=>(
+                  <InputNumber min={1} value={v||1} onChange={val=>setLinea(idx,{cantidad:val||1})}/>
+                )},
+                { title:'Precio', dataIndex:'precio', align:'right', render:(v,rec,idx)=>(
+                  <InputNumber min={0} value={v||0} onChange={val=>setLinea(idx,{precio:val||0})}/>
+                )},
+                { title:'Total', key:'total', align:'right', render:(_,rec)=> 'L.'+Number((rec.cantidad||0)*(rec.precio||0)).toFixed(2) },
+                { title:'', key:'rm', align:'center', render:(_, __, idx)=>(
+                  <Button type="text" danger icon={<icons.DeleteOutlined/>} onClick={()=>rmLinea(idx)} />
+                )},
+              ]}
+            />
           </div>
+
           <div style={{display:'flex', justifyContent:'flex-end', marginTop:8}}>
             <b>Total: {'L.'+Number(totalVenta - Number(form.getFieldValue('descuento')||0)).toLocaleString('es-HN',{minimumFractionDigits:2})}</b>
           </div>
@@ -582,8 +619,8 @@ const cols = [
           <Form.Item name="nombre_descuento" label="Nombre" rules={[{required:true, message:'Ingrese nombre'}]}>
             <Input />
           </Form.Item>
-          <Form.Item name="porcentaje" label="Porcentaje (0-1)" rules={[{required:true, message:'Ingrese porcentaje'}]}>
-            <InputNumber min={0} max={1} step={0.01} style={{width:'100%'}} />
+          <Form.Item name="porcentaje" label="Porcentaje (0-1 ó 0-100)" rules={[{required:true, message:'Ingrese porcentaje'}]}>
+            <InputNumber min={0} step={0.01} style={{width:'100%'}} />
           </Form.Item>
           <Form.Item name="estado" label="Estado" rules={[{required:true, message:'Seleccione estado'}]}>
             <Select>
@@ -599,10 +636,12 @@ const cols = [
   return (
     <Tabs activeKey={tabKey} onChange={setTabKey}>
       <Tabs.TabPane tab="Ventas" key="ventas">{vistaVentas}</Tabs.TabPane>
-      <Tabs.TabPane tab="Descuentos" key="descuentos">{vistaDescuentos}</Tabs.TabPane>
+      {isSuper && <Tabs.TabPane tab="Descuentos" key="descuentos">{vistaDescuentos}</Tabs.TabPane>}
     </Tabs>
   );
 }
 ReactDOM.render(<Ventas />, document.getElementById('VentasView'));
 </script>
+
+
 

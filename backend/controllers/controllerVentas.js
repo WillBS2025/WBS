@@ -66,9 +66,10 @@ function listarDescuentos(){
     var data = sh.getDataRange().getValues();
     if (!data || data.length<2) return JSON.stringify({ ok:true, data: [] });
     var head = data[0].map(String);
-    var idxId   = __V_idxOfAny__(head,['iddescuento','id']);
-    var idxNom  = __V_idxOfAny__(head,['nombredescuento','nombre']);
-    var idxFec  = __V_idxOfAny__(head,['fechacreacion','fechacrecion']);
+    // Acepta nombres con y sin guion bajo
+    var idxId   = __V_idxOfAny__(head,['iddescuento','id','id_descuento']);
+    var idxNom  = __V_idxOfAny__(head,['nombredescuento','nombre','nombre_descuento']);
+    var idxFec  = __V_idxOfAny__(head,['fechacreacion','fecha_creacion','fechacrecion']);
     var idxPor  = __V_idxOfAny__(head,['porcentaje']);
     var idxEst  = __V_idxOfAny__(head,['estado']);
     var out=[];
@@ -93,7 +94,7 @@ function crearDescuento(payload){
     var p = (typeof payload==='string') ? JSON.parse(payload||'{}') : (payload||{});
     var sh = _getSheetDescuentos_();
     var head = __V_head__(sh);
-    var next = __V_nextIdGeneric__(sh, ['iddescuento','id']);
+    var next = __V_nextIdGeneric__(sh, ['iddescuento','id','id_descuento']);
     var tz = Session.getScriptTimeZone && Session.getScriptTimeZone() || 'America/Guatemala';
     var fecha = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm');
     var obj = {
@@ -105,9 +106,9 @@ function crearDescuento(payload){
     };
     var row = head.map(function(h){ 
       var key=__V_normKey__(h);
-      if (key==='iddescuento' || key==='id') return obj.id_descuento;
-      if (key==='nombredescuento' || key==='nombre') return obj.nombre_descuento;
-      if (key==='fechacreacion' || key==='fechacrecion') return obj.fecha_creacion;
+      if (key==='iddescuento' || key==='id' || key==='id_descuento') return obj.id_descuento;
+      if (key==='nombredescuento' || key==='nombre' || key==='nombre_descuento') return obj.nombre_descuento;
+      if (key==='fechacreacion' || key==='fecha_creacion' || key==='fechacrecion') return obj.fecha_creacion;
       if (key==='porcentaje') return obj.porcentaje;
       if (key==='estado') return obj.estado;
       return '';
@@ -126,8 +127,8 @@ function actualizarDescuento(payload){
     var data = sh.getDataRange().getValues();
     if (!data || data.length<2) return JSON.stringify({ ok:false, message:'No hay datos' });
     var head = data[0].map(String);
-    var idxId   = __V_idxOfAny__(head,['iddescuento','id']);
-    var idxNom  = __V_idxOfAny__(head,['nombredescuento','nombre']);
+    var idxId   = __V_idxOfAny__(head,['iddescuento','id','id_descuento']);
+    var idxNom  = __V_idxOfAny__(head,['nombredescuento','nombre','nombre_descuento']);
     var idxPor  = __V_idxOfAny__(head,['porcentaje']);
     var idxEst  = __V_idxOfAny__(head,['estado']);
     var id = String(p.id_descuento||'').trim();
@@ -157,7 +158,7 @@ function eliminarDescuento(id){
     }
 
     var head  = data[0].map(String);
-    var idxId = __V_idxOfAny__(head, ['iddescuento','id']);
+    var idxId = __V_idxOfAny__(head, ['iddescuento','id','id_descuento']);
     var sid   = String(id || '').trim();
 
     for (var r = 1; r < data.length; r++){
@@ -165,7 +166,6 @@ function eliminarDescuento(id){
       var rid = String(idxId >= 0 ? row[idxId] : '').trim();
 
       if (rid === sid){
-        // borra la fila de hoja (recuerda: +1 por cabecera y +1 por base 1)
         sh.deleteRow(r + 1);
         return JSON.stringify({ ok:true });
       }
@@ -177,7 +177,36 @@ function eliminarDescuento(id){
   }
 }
 
-
+/** Solo descuentos ACTIVO(s) para el formulario de ventas */
+function listarDescuentosActivosVenta(){
+  try{
+    var sh = _getSheetDescuentos_();
+    var data = sh.getDataRange().getValues();
+    if (!data || data.length < 2) return JSON.stringify({ ok:true, data: [] });
+    var head = data[0].map(String);
+    var idxId   = __V_idxOfAny__(head, ['iddescuento','id','id_descuento']);
+    var idxNom  = __V_idxOfAny__(head, ['nombredescuento','nombre','nombre_descuento']);
+    var idxPor  = __V_idxOfAny__(head, ['porcentaje']);
+    var idxEst  = __V_idxOfAny__(head, ['estado']);
+    var out = [];
+    for (var r=1;r<data.length;r++){
+      var row = data[r];
+      var est = String(idxEst>=0?row[idxEst]:'Activo').toLowerCase();
+      if (est !== 'activo') continue;
+      var p = Number((idxPor>=0?row[idxPor]:0) || 0);
+      var factor = (p > 1) ? (p/100) : p; // normaliza 15 -> 0.15
+      out.push({
+        id_descuento: (idxId>=0?row[idxId]:r) || r,
+        nombre_descuento: (idxNom>=0?row[idxNom]:'') || '',
+        porcentaje: p,
+        factor: factor
+      });
+    }
+    return JSON.stringify({ ok:true, data: out });
+  }catch(err){
+    return JSON.stringify({ ok:false, message:'Error al listar descuentos activos: '+err });
+  }
+}
 
 function _getSheetProductos_(){
   var name = (typeof env_==='function' && (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2)) || 'productos';
@@ -325,7 +354,6 @@ function listarFacturasFront(){
         total: Number(__V_get(m, row, ['total'], 0) || 0),
         metodo_pago: __V_get(m, row, ['metododepago','metodopago','metodo_pago','pago'], ''),
       };
-      // timestamp para controlar ventana de edición (5 minutos)
       var t = obj.fecha;
       var ms = (t && Object.prototype.toString.call(t)==='[object Date]' && !isNaN(t)) ? t.getTime() : Date.parse(t);
       obj._createdAt = isNaN(ms) ? Date.now() : ms;
@@ -348,10 +376,8 @@ function crearVenta(payload){
     var shD = _getSheetDetalle_();
     var headF = __V_head__(shF);
     var headD = __V_head__(shD);
-    // id correlativo de la factura
     var id = Number(obj.id_factura||0) || __V_nextIdFacturas__();
 
-    // Helper para obtener la sucursal desde la tabla usuarios cuando no viene en el payload
     function __resolveSucursal__(usuario){
       try{
         var shU = _getSheetUsuarios_();
@@ -381,7 +407,6 @@ function crearVenta(payload){
       }catch(e){ return ''; }
     }
 
-    // construir fila de facturas respetando encabezados
     var mapF = __V_headerIndexMap__(headF);
     var rowF = new Array(headF.length);
     function pickF(key, fallback){ return (obj[key] != null ? obj[key] : fallback); }
@@ -421,11 +446,9 @@ function crearVenta(payload){
     }
     shF.appendRow(rowF);
 
-    // detalle
     var items = obj.items || [];
     if (items && items.length){
       var rowsD = [];
-      // id_detalle correlativo global en la hoja detalle
       var nextDetId = __V_nextIdGeneric__(shD, ['id_detalle','iddetalle']);
       for (var i=0;i<items.length;i++){
         var it = items[i];
@@ -448,7 +471,6 @@ function crearVenta(payload){
       if (rowsD.length) shD.getRange(shD.getLastRow()+1,1,rowsD.length,headD.length).setValues(rowsD);
     }
 
-    // Actualizar inventario para productos
     try{
       for (var k=0;k<items.length;k++){
         var it2 = items[k]||{};
@@ -467,10 +489,8 @@ function crearVenta(payload){
 
 /** ========== NUEVAS FUNCIONES EXPUESTAS PARA LA VISTA VENTAS ========== */
 
-/** Lista el detalle de una factura en la hoja detalle_factura por id_factura. */
 function listarDetalleFactura(id){
   try{
-    // Diccionario nombre -> tipo usando hojas de servicios y productos
     var mapaTipos = {};
     try{
       var shS = obtenerSheet((env_().SH_SERVICIOS||'servicios'));
@@ -534,7 +554,6 @@ function bootstrapVentas(sucursal){
     }
     var out = { ok:true, servicios:[], productos:[] };
 
-    // Servicios activos por sucursal
     try{
       var shS = obtenerSheet((env_().SH_SERVICIOS||'servicios'));
       var arrS = (typeof _read==='function' ? _read(shS) : []);
@@ -549,7 +568,6 @@ function bootstrapVentas(sucursal){
       }
     }catch(e){}
 
-    // Productos por sucursal
     try{
       var hojaProductos = (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2 || 'productos');
       var shP = obtenerSheet(hojaProductos);
@@ -564,21 +582,19 @@ function bootstrapVentas(sucursal){
       }
     }catch(e){}
 
-    // Orden alfabético
     try{
       out.servicios.sort(function(a,b){ return String(a.descripcion).localeCompare(String(b.descripcion)); });
       out.productos.sort(function(a,b){ return String(a.descripcion).localeCompare(String(b.descripcion)); });
     }catch(e){}
 
     var resp = JSON.stringify(out);
-    if (cache){ cache.put(key, resp, 300); } // 5 minutos
+    if (cache){ cache.put(key, resp, 300); }
     return resp;
   }catch(err){
     return JSON.stringify({ ok:false, message:'Error en bootstrapVentas: '+err });
   }
 }
 
-/** Busca items (servicios + productos) para el autocompletar del modal Nueva venta. */
 function buscarItemsVenta(query, sucursal, tipo){
   try{
     var boot = JSON.parse(bootstrapVentas(sucursal)||'{}');
@@ -597,7 +613,6 @@ function buscarItemsVenta(query, sucursal, tipo){
     tipo = (tipo ? String(tipo).toLowerCase() : '');
     var items = [];
 
-    // Servicios
     try{
       if (!tipo || tipo === 'servicio') {
         var shS = obtenerSheet((env_().SH_SERVICIOS||'servicios'));
@@ -615,7 +630,6 @@ function buscarItemsVenta(query, sucursal, tipo){
       }
     }catch(e){}
 
-    // Productos
     try{
       if (!tipo || tipo === 'producto') {
         var hojaProductos = (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2 || 'productos');
@@ -633,7 +647,6 @@ function buscarItemsVenta(query, sucursal, tipo){
       }
     }catch(e){}
 
-    // Ordenar (simple por longitud/alfabético)
     items.sort(function(a,b){
       var A=a.descripcion.length, B=b.descripcion.length;
       if (A!==B) return A-B;
@@ -645,7 +658,6 @@ function buscarItemsVenta(query, sucursal, tipo){
   }
 }
 
-/** Verifica si puede editar/eliminar una factura según rol y tiempo (5 min para admin). */
 function __V_puedeEditarFactura__(fecha, rol){
   try{
     rol = String(rol||'').toLowerCase();
@@ -658,8 +670,6 @@ function __V_puedeEditarFactura__(fecha, rol){
   }catch(_){ return false; }
 }
 
-
-/** Elimina una factura y sus líneas si se permite por rol/tiempo. */
 function eliminarVenta(id_factura, rol){
   try{
     id_factura = String(id_factura||'').trim();
@@ -688,7 +698,6 @@ function eliminarVenta(id_factura, rol){
     if (!__V_puedeEditarFactura__(fechaVal, rol)){
       return JSON.stringify({ ok:false, message:'Fuera de ventana de edición (5 min) para rol '+rol });
     }
-    // Restaurar stock por detalle previo (si son productos)
     try{
       var shD = _getSheetDetalle_();
       var headD = __V_head__(shD);
@@ -698,7 +707,6 @@ function eliminarVenta(id_factura, rol){
       var idxCant = (mapD['cantidad']!=null)?mapD['cantidad']:-1;
       var sucFac = (m['sucursal']!=null? data[rowIndex-1][m['sucursal']] : (m['nombresucursal']!=null? data[rowIndex-1][m['nombresucursal']] : ''));
       var last = shD.getLastRow();
-      // Detectar productos por nombre en hoja productos
       var productosSet = {};
       try{
         var hojaProductos = (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2 || 'productos');
@@ -716,28 +724,23 @@ function eliminarVenta(id_factura, rol){
       }
     }catch(e){}
 
-    // Eliminar líneas de detalle
     var shD = _getSheetDetalle_();
     var headD = __V_head__(shD);
     var idxIdF = __V_idxOfAny__(headD, ['id_factura','id','factura']);
     var last = shD.getLastRow();
-    // Recorremos de abajo hacia arriba para eliminar
     for (var rr=last; rr>=2; rr--){
       var val = shD.getRange(rr,1,1,headD.length).getValues()[0];
       if (String(val[idxIdF]) === id_factura){
         shD.deleteRow(rr);
       }
     }
-    // Eliminar factura
     shF.deleteRow(rowIndex);
-    return JSON.stringify({ ok:true }); // RESTORE_STOCK_ON_DELETE
+    return JSON.stringify({ ok:true }); 
   }catch(err){
     return JSON.stringify({ ok:false, message:'Error al eliminar venta: '+err });
   }
 }
 
-
-/** Actualiza cabecera y detalle de una venta si se permite por rol/tiempo. payload incluye id_factura y campos a actualizar. */
 function actualizarVenta(payload, rol){
   try{
     var obj = (typeof payload==='string') ? JSON.parse(payload) : (payload||{});
@@ -748,7 +751,7 @@ function actualizarVenta(payload, rol){
     var headF = __V_head__(shF);
     var headD = __V_head__(shD);
     var mapF = __V_headerIndexMap__(headF);
-    // Buscar fila y fecha
+
     var idxIdF = (mapF['id_factura']!=null) ? mapF['id_factura'] :
                  (mapF['id']!=null) ? mapF['id'] :
                  (mapF['factura']!=null) ? mapF['factura'] : -1;
@@ -768,7 +771,7 @@ function actualizarVenta(payload, rol){
     if (!__V_puedeEditarFactura__(fechaVal, rol)){
       return JSON.stringify({ ok:false, message:'Fuera de ventana de edición (5 min) para rol '+rol });
     }
-    // Construir fila actualizada (conservar fecha si no viene)
+
     var rowF = shF.getRange(rowIndex,1,1,headF.length).getValues()[0];
     for (var c=0;c<headF.length;c++){
       var k = __V_normalizeHeader__(headF[c]);
@@ -777,15 +780,14 @@ function actualizarVenta(payload, rol){
       else if (k==='descuento') rowF[c] = Number(obj.descuento||0);
       else if (k==='sub_total' || k==='subtotal') rowF[c] = Number(obj.sub_total||0);
       else if (k==='total') rowF[c] = Number(obj.total||0);
-      // usuario, sucursal, fecha se preservan
     }
     shF.getRange(rowIndex,1,1,headF.length).setValues([rowF]);
-    // Reemplazar detalle
+
     var mapD = __V_headerIndexMap__(headD);
     var idxIdFacturaD = (mapD['id_factura']!=null) ? mapD['id_factura'] :
                         (mapD['id']!=null) ? mapD['id'] :
                         (mapD['factura']!=null) ? mapD['factura'] : -1;
-    // Revertir stock de productos según detalle anterior
+
     var lastD = shD.getLastRow();
     for (var rr=lastD; rr>=2; rr--){
       var rowD = shD.getRange(rr,1,1,headD.length).getValues()[0];
@@ -799,10 +801,9 @@ function actualizarVenta(payload, rol){
         shD.deleteRow(rr);
       }
     }
-    // Insertar nuevos
+
     var items = obj.items || [];
     if (items && items.length){
-      // id_detalle correlativo global
       var nextDetId = __V_nextIdGeneric__(shD, ['id_detalle','iddetalle']);
       var rowsD = [];
       for (var i=0;i<items.length;i++){
@@ -825,7 +826,6 @@ function actualizarVenta(payload, rol){
       }
       if (rowsD.length) shD.getRange(shD.getLastRow()+1,1,rowsD.length,headD.length).setValues(rowsD);
     }
-    // Aplicar stock para nuevos productos
     try{
       for (var k=0;k<items.length;k++){
         var it2 = items[k]||{};
@@ -834,13 +834,12 @@ function actualizarVenta(payload, rol){
         }
       }
     }catch(e){}
-    return JSON.stringify({ ok:true }); // RESTORE_STOCK_ON_DELETE
+    return JSON.stringify({ ok:true }); 
   }catch(err){
     return JSON.stringify({ ok:false, message:'Error al actualizar venta: '+err });
   }
 }
 
-/** Listar empleados activos; si se pasa sucursal, filtra por ella. */
 function listarEmpleadosActivos(sucursal){
   try{
     sucursal = String(sucursal||'').trim();
