@@ -50,8 +50,8 @@
 <div id="VentasView"></div>
 <script type="text/babel">
 function Ventas(){
-  const { useState, useEffect, useMemo } = React;
-  const { Table, Card, Button, Modal, Form, InputNumber, Select, Space, Row, Col, message, Tabs, Input } = antd;
+  const { useState, useEffect, useMemo, useRef } = React; /* ← agregado useRef para animación KPI */
+  const { Table, Card, Button, Modal, Form, InputNumber, Select, Space, Row, Col, message, Tabs, Input, Divider } = antd; /* ← agregado Divider */
   const icons = (window.icons || window.iconsAntd || {});
 
   // ===== Context & role =====
@@ -91,6 +91,7 @@ function Ventas(){
       .withFailureHandler(function(){ setDescuentosActivos([]); })
       .listarDescuentosActivosVenta();
   }
+  
 
   // ===== Filtrado frontend =====
   const dataFiltrada = useMemo(()=>{
@@ -633,15 +634,194 @@ function Ventas(){
     </Card>
   );
 
+  /* =========================================================
+     ====== NUEVO: Helpers, KPIs y Dashboards (look Sucursales)
+     ========================================================= */
+  function parseFechaFlexible(v){
+    if (v instanceof Date) return v;
+    if (typeof v === 'number') return new Date(v);
+    if (typeof v === 'string'){
+      if (/^\d{4}-\d{2}-\d{2}/.test(v)) return new Date(v);
+      var m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (m){
+        var d = parseInt(m[1],10), mo=parseInt(m[2],10)-1, y=parseInt(m[3],10); if (y<100) y+=2000; return new Date(y,mo,d);
+      }
+      var d2 = new Date(v); if (!isNaN(d2)) return d2;
+      return null;
+    }
+    var d0 = new Date(v); return isNaN(d0) ? null : d0;
+  }
+  function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  function sameDay(a,b){ a=startOfDay(a); b=startOfDay(b); return a.getTime()===b.getTime(); }
+  function addDays(d,n){ var x=new Date(d); x.setDate(x.getDate()+n); return x; }
+  function formatDDMMYYYY(d){
+    var y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+    return `${day}/${m}/${y}`;
+  }
+  function getTotalFactura(r){
+    var t = Number(r.total);
+    if (!isFinite(t)){ t = Number(r.sub_total||0) - Number(r.descuento||0); }
+    return t||0;
+  }
+  function useCountUp(value, duration=700){
+    const [display, setDisplay] = useState(0);
+    const prevRef = useRef(0);
+    useEffect(()=>{
+      const start = performance.now();
+      const from = prevRef.current;
+      const to = Number(value||0);
+      let raf;
+      function tick(t){
+        const p = Math.min(1, (t - start)/duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setDisplay(from + (to - from) * eased);
+        if (p < 1) raf = requestAnimationFrame(tick);
+      }
+      raf = requestAnimationFrame(tick);
+      prevRef.current = to;
+      return ()=> cancelAnimationFrame(raf);
+    }, [value, duration]);
+    return display;
+  }
+  function KPI({ title, value, suffix }){
+    const v = useCountUp(value);
+    return (
+      <Card bodyStyle={{ padding: 14 }} className="ventas-kpi">
+        <div className="ventas-kpi-sub">{title}</div>
+        <div className="ventas-kpi-val">{Math.round(Number(v))}{suffix||''}</div>
+      </Card>
+    );
+  }
+  // Datos parseados + cortes de tiempo
+  const hoy = startOfDay(new Date());
+  const facturasParsed = (facturas||[]).map(r => ({ ...r, _fecha: parseFechaFlexible(r.fecha || r.Fecha || r._createdAt) }));
+  const facturasHoy = facturasParsed.filter(r => r._fecha && sameDay(r._fecha, hoy));
+  const ventasHoy = facturasHoy.length;
+  const ingresosHoy = facturasHoy.reduce((a,r)=> a + getTotalFactura(r), 0);
+  const empleadosActivosHoy = new Set(facturasHoy.map(r => r.empleado || '(sin asignar)')).size;
+
+  // Diario por empleado (hoy)
+  const mapaDiario = {};
+  facturasHoy.forEach(r => {
+    var emp = r.empleado || '(sin asignar)';
+    if (!mapaDiario[emp]) mapaDiario[emp] = { empleado: emp, conteo:0, total:0 };
+    mapaDiario[emp].conteo += 1;
+    mapaDiario[emp].total  += getTotalFactura(r);
+  });
+  const diarioRows = Object.values(mapaDiario).sort((a,b)=> b.conteo - a.conteo);
+  const maxDiario = Math.max(1, ...diarioRows.map(r=>r.conteo));
+
+  // Semanal (últimos 7 días - equipo completo)
+  const semanaRows = Array.from({length:7}).map((_,i)=>{
+    const d = addDays(hoy, i-6); // de hace 6 días a hoy
+    const registros = facturasParsed.filter(r => r._fecha && sameDay(startOfDay(r._fecha), d));
+    const conteo = registros.length;
+    const total = registros.reduce((a,r)=> a + getTotalFactura(r), 0);
+    return { key:String(i), fecha:d, conteo, total };
+  });
+  const maxSem = Math.max(1, ...semanaRows.map(r=>r.conteo));
+
+  const colsDiario = [
+    { title:'Empleado', dataIndex:'empleado' },
+    { title:'Ventas', dataIndex:'conteo', align:'right' },
+    { title:'Total', dataIndex:'total', align:'right', render:v=>'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2}) },
+    { title:'', key:'bar', render:(_,r)=>(
+      <div className="ventas-bar"><span style={{width: (r.conteo*100/maxDiario)+'%'}} /></div>
+    )}
+  ];
+  const colsSemanal = [
+    { title:'Fecha', dataIndex:'fecha', render:v=>formatDDMMYYYY(v) },
+    { title:'Ventas', dataIndex:'conteo', align:'right' },
+    { title:'Total', dataIndex:'total', align:'right', render:v=>'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2}) },
+    { title:'', key:'bar', render:(_,r)=>(
+      <div className="ventas-bar"><span style={{width: (r.conteo*100/maxSem)+'%'}} /></div>
+    )}
+  ];
+
+  /* ===== Vista “decorada” al estilo Sucursales (sin quitar tu vista) ===== */
+  const vistaVentasDecorada = (
+    <div className="ventas-wrap">
+      <Card
+        title={<div className="ventas-hero-title"><span className="ventas-spark"></span>Ventas</div>}
+        extra={
+          <Space>
+            <Button onClick={cargarFacturas} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
+            <Button type="primary" onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Nueva venta</Button>
+          </Space>
+        }
+      >
+        {/* Estilos scopeados tipo Sucursales */}
+        <style>{`
+          .ventas-wrap * { box-sizing: border-box; }
+          .ventas-hero-title{ position:relative; padding-left:12px; font-weight:800; }
+          .ventas-spark{
+            position:absolute; left:0; top:6px; width:6px; height:22px; border-radius:3px;
+            background: linear-gradient(180deg,#60a5fa,#a78bfa,#34d399);
+            animation: ventasSpark 2.6s ease-in-out infinite;
+          }
+          @keyframes ventasSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
+
+          /* KPIs */
+          .ventas-kpi{ border-radius:14px; background: linear-gradient(135deg,#e0eaff,#e9fff6); box-shadow: 0 2px 10px rgba(15,23,42,.06); }
+          .ventas-kpi-sub{ font-size:12px; color:#6b7280 }
+          .ventas-kpi-val{ font-size:26px; font-weight:800; color:#0f172a }
+
+          /* Barras simples para los dashboards */
+          .ventas-bar{ height:10px; background:#eef2ff; border-radius:999px; overflow:hidden; }
+          .ventas-bar > span{ display:block; height:100%; background:linear-gradient(90deg,#60a5fa,#34d399); }
+
+          /* Table feel */
+          .ventas-wrap .ant-table-thead > tr > th{ background:#f8fafc !important; border-bottom:0; color:#334155; font-weight:700; }
+          .ventas-wrap .ant-table-tbody > tr{ transition: transform .15s ease, box-shadow .15s ease, background .2s; }
+          .ventas-wrap .ant-table-tbody > tr:hover{ transform: scale(1.01); box-shadow: 0 10px 24px rgba(2,6,23,.08); }
+        `}</style>
+
+        {/* KPIs */}
+        <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+          <Col xs={24} sm={8}><KPI title="Ventas hoy" value={ventasHoy} /></Col>
+          <Col xs={24} sm={8}><KPI title="Ingresos hoy" value={ingresosHoy}/></Col>
+          <Col xs={24} sm={8}><KPI title="Empleados activos hoy" value={empleadosActivosHoy} /></Col>
+        </Row>
+
+        {/* Dashboards pedidos */}
+        <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+          <Col xs={24} md={12}>
+            <Card size="small" title="Actividades diarias por empleado (hoy)">
+              <Table
+                size="small"
+                dataSource={diarioRows.map((r,i)=>({...r, key:i}))}
+                columns={colsDiario}
+                pagination={false}
+              />
+            </Card>
+          </Col>
+          <Col xs={24} md={12}>
+            <Card size="small" title="Actividades — últimos 7 días">
+              <Table
+                size="small"
+                dataSource={semanaRows}
+                columns={colsSemanal}
+                pagination={false}
+                rowKey="key"
+              />
+            </Card>
+          </Col>
+        </Row>
+
+        <Divider style={{margin:'8px 0'}}>Detalle y gestión</Divider>
+
+        {/* Tu vista original tal cual (NO se tocó) */}
+        {vistaVentas}
+      </Card>
+    </div>
+  );
+
   return (
     <Tabs activeKey={tabKey} onChange={setTabKey}>
-      <Tabs.TabPane tab="Ventas" key="ventas">{vistaVentas}</Tabs.TabPane>
+      <Tabs.TabPane tab="Ventas" key="ventas">{vistaVentasDecorada}</Tabs.TabPane>
       {isSuper && <Tabs.TabPane tab="Descuentos" key="descuentos">{vistaDescuentos}</Tabs.TabPane>}
     </Tabs>
   );
 }
 ReactDOM.render(<Ventas />, document.getElementById('VentasView'));
 </script>
-
-
-
