@@ -1,0 +1,23 @@
+<style>
+/* Barra inferior móvil */
+.wb-bnav{
+  position: fixed; bottom: env(safe-area-inset-bottom); left: 0; right: 0;
+  height: 64px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  display: none; align-items: center; justify-content: space-around;
+  background: rgba(255,255,255,0.96); border-top: 1px solid rgba(0,0,0,0.08);
+  box-shadow: 0 -6px 16px rgba(0,0,0,0.08); z-index: 1000; backdrop-filter: saturate(180%) blur(10px);
+}
+.wb-bnav__btn{ appearance: none; background: transparent; border: 0; display: grid; place-items: center; gap: 4px; font-size: 12px; line-height: 1; color: #374151; text-decoration: none; }
+.wb-bnav__btn .anticon{ font-size: 20px; }
+.wb-bnav__btn.is-active, .wb-bnav__btn:hover{ color:#111; }
+.wb-bnav__lbl{ font-weight:500; }
+
+/* Breakpoint */
+@media (max-width: 991px){
+  .wb-sidebar, .ant-layout-sider { display: none !important; }
+  .app-main { margin-left: 0 !important; }
+  .wb-bnav { display: flex; }
+  .ant-layout-content, .site-layout-background, .wbs-shell, body{ padding-bottom: 80px; }
+}
+</style>
+

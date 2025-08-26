@@ -80,7 +80,7 @@ function guardarUsuarioSeguro(usuarioJson){
         if (idx.contrasenia != null) row[idx.contrasenia] = u.contrasenia || '';
         if (idx.rol != null) row[idx.rol] = u.rol || 'admin';
         if (idx.estado != null) row[idx.estado] = u.estado || 'activo';
-        if (idx.nombreSucursal != null) row[idx.nombreSucursal] = (__U_sucursalFromEmpleadoNombre__(u.nombreCompleto) || '');
+        if (idx.nombreSucursal != null) row[idx.nombreSucursal] = (u.nombreSucursal || __U_sucursalFromEmpleadoNombre__(u.nombreCompleto) || '');
 
         sh.appendRow(row);
         return { ok:true, titulo:'Usuario creado', descripcion:'Creado correctamente' };
@@ -123,7 +123,7 @@ function actualizarUsuarioSeguro(a, b){
 
         // sincronizar sucursal según nombreCompleto
         try{
-            if (idx.nombreSucursal != null){
+            if (idx.nombreSucursal != null && !(d && d.hasOwnProperty('nombreSucursal'))){
                 var nom = (d && d.nombreCompleto) ? d.nombreCompleto :
                           sh.getRange(found.rowIndex, (idx.nombreCompleto!=null? idx.nombreCompleto+1 : 1)).getDisplayValue();
                 var suc = __U_sucursalFromEmpleadoNombre__(nom);

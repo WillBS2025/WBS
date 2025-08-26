@@ -166,7 +166,7 @@ function Servicios() {
     { title:'Sucursal', dataIndex:'nombre_sucursal', key:'nombre_sucursal', width:220 },
     { title:'Estado', dataIndex:'estado', key:'estado', width:110,
       render: (s) => <span className="ant-tag" style={{background:'#f6ffed', borderColor:'#b7eb8f', color:'#389e0d'}}>{s || ''}</span> },
-    { title:'', key:'acciones', className:'col-actions', width:92, align:'center',
+    { title:'', key:'acciones', className:'col-actions', width:92, align:'center', fixed:'right',
       render:(_,rec)=>(
         <Space direction="vertical" size={4}>
           <Button size="small" onClick={()=>abrirEditar(rec)} icon={<icons.EditOutlined />}>Editar</Button>
@@ -280,6 +280,7 @@ function Servicios() {
                     columns={columns}
                     loading={loading}
                     pagination={{ pageSize: 8 }}
+                    scroll={{ x: true }}
                     rowKey={(r)=> (r && r.id != null) ? r.id : (r && r.id_servicios) || r.key}
                   />
                 </Tabs.TabPane>
@@ -287,7 +288,7 @@ function Servicios() {
             })}
           </Tabs>
         ) : (
-          <Table className="svc-table" dataSource={data} columns={columns} loading={loading} pagination={{ pageSize: 8 }} />
+          <Table className="svc-table" dataSource={data} columns={columns} loading={loading} pagination={{ pageSize: 8 }} scroll={{ x: true }} />
         )}
 
         {/* ===== Modal Crear/Editar ===== */}

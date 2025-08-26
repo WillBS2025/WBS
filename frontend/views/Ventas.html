@@ -355,7 +355,24 @@ function Ventas(){
   const cols = [
     { title:'Detalle', key:'ver', render:(_,rec)=>(<Button size="small" icon={<icons.EyeOutlined/>} onClick={()=>verDetalle(rec)}>Ver detalle</Button>) },
     { title:'Factura', dataIndex:'id_factura', key:'id_factura', width: 90 },
-    { title:'Fecha', dataIndex:'fecha', key:'fecha' },
+    { title:'Fecha', dataIndex:'fecha', key:'fecha', render:(_,rec)=>{
+      const raw = rec && (rec.fecha || rec.fecha_hora || rec.fechahora) || '';
+      const d = new Date(raw);
+      let ymd = '', hm = '';
+      if (!isNaN(d.getTime())){
+        const y = d.getFullYear();
+        const m = String(d.getMonth()+1).padStart(2,'0');
+        const da = String(d.getDate()).padStart(2,'0');
+        const hh = String(d.getHours()).padStart(2,'0');
+        const mm = String(d.getMinutes()).padStart(2,'0');
+        ymd = `${y}-${m}-${da}`; hm = `${hh}:${mm}`;
+      } else {
+        const s = String(raw);
+        const m1 = s.match(/(\d{4}-\d{2}-\d{2})/); if (m1) ymd = m1[1];
+        const m2 = s.match(/\b(\d{1,2}):(\d{2})\b/); if (m2) hm = `${m2[1].padStart(2,'0')}:${m2[2]}`;
+      }
+      return hm ? `${ymd} (${hm})` : ymd;
+    } },
     { title:'Sucursal', dataIndex:'sucursal', key:'sucursal' },
     { title:'Usuario', dataIndex:'usuario', key:'usuario' },
     { title:'Empleado', dataIndex:'empleado', key:'empleado' },
@@ -363,7 +380,7 @@ function Ventas(){
     { title:'Descuento', dataIndex:'descuento', key:'descuento', align:'right', render:v=>'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2}) },
     { title:'Total', dataIndex:'total', key:'total', align:'right', render:v=>(<b>{'L.'+Number(v||0).toLocaleString('es-HN',{minimumFractionDigits:2, maximumFractionDigits:2})}</b>) },
     { title:'Método', dataIndex:'metodo_pago', key:'metodo_pago' },
-    { title:'Acciones', key:'acciones', align:'center', render:(_,rec)=>{
+    { title:'Acciones', key:'acciones', align:'center', fixed:'right', render:(_,rec)=>{
         const disabled = !rec._editable;
         const sz = 18;
         return (
@@ -406,6 +423,7 @@ function Ventas(){
         columns={cols}
         loading={loading}
         pagination={{ pageSize: 10 }}
+        scroll={{ x: true }}
       />
 
       <Modal
@@ -421,6 +439,7 @@ function Ventas(){
           dataSource={detalle}
           columns={detCols}
           pagination={false}
+          scroll={{ x: true }}
         />
       </Modal>
 
@@ -487,6 +506,7 @@ function Ventas(){
               size="small"
               dataSource={lineas.map((ln,i)=>({...ln, key:i}))}
               pagination={false}
+              scroll={{ x: true }}
               columns={[
                 { title:'Tipo', dataIndex:'tipo', width:120, render:(v)=>(
                   <span style={{display:'inline-block', padding:'2px 10px', borderRadius:8, background:'#f0f2f5', fontWeight:500}}>

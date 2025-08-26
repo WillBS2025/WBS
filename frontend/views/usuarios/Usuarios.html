@@ -12,6 +12,7 @@ function Usuarios() {
   const [mode, setMode] = useState('create'); // 'create' | 'edit'
   const [form] = antd.Form.useForm();
   const [empleados, setEmpleados] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
   const [toDelete, setToDelete] = useState(null);
   const [sucursalFiltro, setSucursalFiltro] = useState(null);
   const [openDelete, setOpenDelete] = useState(false);
@@ -25,7 +26,7 @@ function Usuarios() {
     { title: 'Estado', dataIndex: 'estado', key: 'estado' },
     {
       title: 'Acciones',
-      key: 'acciones',
+      key: 'acciones', fixed: 'right',
       width: 160,
       render: (_, record) => (
         <Space>
@@ -39,6 +40,7 @@ function Usuarios() {
   useEffect(() => {
     cargar();
     cargarEmpleados();
+    cargarSucursales();
   }, []);
 
   function normalizeResponse(res) {
@@ -73,6 +75,19 @@ function Usuarios() {
       .listarEmpleados();
   }
 
+  function cargarSucursales() {
+    google.script.run
+      .withSuccessHandler((res) => {
+        try {
+          const r = (typeof res === 'string') ? JSON.parse(res) : res;
+          const arr = (r && r.ok && Array.isArray(r.sucursales)) ? r.sucursales : (Array.isArray(r) ? r : []);
+          setSucursales(arr);
+        } catch (_) { setSucursales([]); }
+      })
+      .withFailureHandler(() => setSucursales([]))
+      .listarSucursales();
+  }
+
   function abrirNuevo(){
     setMode('create'); form.resetFields(); setOpen(true);
   }
@@ -82,6 +97,7 @@ function Usuarios() {
       id: record.id,
       nombreCompleto: record.nombreCompleto,
       correo: record.correo,
+      nombreSucursal: record.nombreSucursal,
       contrasenia: '',
       rol: record.rol,
       estado: record.estado,
@@ -101,6 +117,7 @@ function Usuarios() {
         contrasenia: values.contrasenia || '',
         rol: values.rol,
         estado: values.estado,
+        nombreSucursal: values.nombreSucursal,
       };
 
       google.script.run
@@ -279,6 +296,7 @@ function Usuarios() {
           columns={Array.isArray(columns)?columns:[]}
           loading={loading}
           pagination={{ pageSize: 8 }}
+          scroll={{ x: true }}
         />
       </div>
 
@@ -319,6 +337,13 @@ function Usuarios() {
             rules={mode==='create'?[{ required:true, message:'Ingresa una contraseña' }]:[]}
           >
             <Input.Password placeholder={mode==='create'?'Nueva contraseña':'(Opcional) nueva contraseña'} />
+          </Form.Item>
+          <Form.Item name="nombreSucursal" label="Sucursal" rules={[{ required:true, message:'Selecciona una sucursal' }]}>
+            <Select placeholder="Selecciona sucursal...">
+              {Array.isArray(sucursales) && sucursales.map(s => (
+                <Select.Option key={s} value={s}>{s}</Select.Option>
+              ))}
+            </Select>
           </Form.Item>
           <Form.Item name="rol" label="Rol" rules={[{ required:true, message:'Selecciona un rol' }]}>
             <Select options={[ { value:'super_admin', label:'Super Admin' }, { value:'admin', label:'Admin' } ]} />

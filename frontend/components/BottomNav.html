@@ -1,0 +1,88 @@
+// <script type="text/jsx">
+/**
+ * BottomNav – barra inferior móvil.
+ * Admin: Inicio, Inventario, Ventas.
+ * Super admin: + Personas (Empleados/Usuarios) y Más.
+ */
+function BottomNav({ onLogout }) {
+  // Rol (mismo criterio que Sidebar)
+  const [role] = React.useState(() => {
+    try { return (localStorage.getItem('userRole') || 'admin'); } catch (_) { return 'admin'; }
+  });
+  const norm = String(role || '').trim().toLowerCase();
+  const isAdmin = norm === 'admin';
+  const isSuperAdmin = norm === 'super_admin';
+
+  // Submenús
+  const menuPersonas = (
+    <Menu>
+      <Menu.Item key="p1"><Link to="/Empleados">Empleados</Link></Menu.Item>
+      <Menu.Item key="p2"><Link to="/Usuarios">Usuarios</Link></Menu.Item>
+    </Menu>
+  );
+
+  const menuInventario = (
+    <Menu>
+      <Menu.Item key="i1"><Link to="/inventario/productos">Productos</Link></Menu.Item>
+      <Menu.Item key="i2"><Link to="/inventario/suministros">Suministros</Link></Menu.Item>
+    </Menu>
+  );
+
+  const menuMas = (
+    <Menu>
+      <Menu.Item key="m1"><Link to="/Servicios">Servicios</Link></Menu.Item>
+      <Menu.Item key="m2"><Link to="/Gastos">Gastos</Link></Menu.Item>
+      <Menu.Item key="m3"><Link to="/Reportes">Reportes</Link></Menu.Item>
+      <Menu.Item key="m4"><Link to="/Sucursales">Sucursales</Link></Menu.Item>
+      <Menu.Divider />
+      <Menu.Item key="m5" onClick={onLogout} icon={<icons.LogoutOutlined />}>Cerrar Sesión</Menu.Item>
+    </Menu>
+  );
+
+  // Resalta la pestaña según ruta actual
+  const location = useLocation();
+  const path = (location.pathname || "").toLowerCase();
+
+  const Tab = ({ to, icon, label }) => (
+    <NavLink exact to={to} className="wb-bnav__btn" activeClassName="is-active">
+      {icon}
+      <span className="wb-bnav__lbl">{label}</span>
+    </NavLink>
+  );
+
+  return (
+    <nav className="wb-bnav" aria-label="Navegación inferior">
+      <Tab to="/" icon={<icons.HomeOutlined />} label="Inicio" />
+
+      {isSuperAdmin && (
+        <Dropdown overlay={menuPersonas} trigger={['click']} placement="topCenter">
+          <button className={"wb-bnav__btn " + (path.includes('/empleados') || path.includes('/usuarios') ? "is-active" : "")}>
+            <icons.TeamOutlined />
+            <span className="wb-bnav__lbl">Personas</span>
+          </button>
+        </Dropdown>
+      )}
+
+      <Dropdown overlay={menuInventario} trigger={['click']} placement="topCenter">
+        <button className={"wb-bnav__btn " + (path.startsWith('/inventario') ? "is-active" : "")}>
+          <icons.BarcodeOutlined />
+          <span className="wb-bnav__lbl">Inventario</span>
+        </button>
+      </Dropdown>
+
+      <Tab to="/Ventas" icon={<icons.ShoppingCartOutlined />} label="Ventas" />
+
+      {isSuperAdmin && (
+        <Dropdown overlay={menuMas} trigger={['click']} placement="topCenter">
+          <button className="wb-bnav__btn">
+            <icons.MenuOutlined />
+            <span className="wb-bnav__lbl">Más</span>
+          </button>
+        </Dropdown>
+      )}
+    </nav>
+  );
+}
+// </script>
+
+

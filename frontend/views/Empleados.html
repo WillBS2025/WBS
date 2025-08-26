@@ -138,7 +138,7 @@ function Empleados() {
     { title:'F. Contratación', dataIndex:'fecha_contratacion', key:'fecha_contratacion', width:150 },
     { title:'Antigüedad', dataIndex:'antiguedad', key:'antiguedad', width:110 },
     { title:'Estado', dataIndex:'estado', key:'estado', width:110, render:s=>(<span className="ant-tag" style={{background:'#f6ffed',borderColor:'#b7eb8f',color:'#389e0d'}}>{s||''}</span>) },
-    { title:'', key:'acc', width:92, align:'center', render:(_,rec)=>(<Space direction="vertical" size={4}>
+    { title:'', key:'acc', width:92, align:'center', fixed:'right', render:(_,rec)=>(<Space direction="vertical" size={4}>
         <Button size="small" onClick={()=>abrirEditar(rec)} icon={<icons.EditOutlined />}>Editar</Button>
         <Button size="small" type="text" danger onClick={()=>abrirEliminar(rec)} icon={<icons.DeleteOutlined />}>Eliminar</Button>
       </Space>)
@@ -256,7 +256,7 @@ function Empleados() {
       extra={(
         <Space>
           <Input placeholder="Buscar por nombre..." allowClear style={{width:240}} value={filters.nombre_empleado}
-                 onChange={e=>setFilters({...filters, nombre_empleado:e.target.value})} />
+                  onChange={e=>setFilters({...filters, nombre_empleado:e.target.value})} />
           <Select placeholder="Sucursal" allowClear style={{width:200}} value={filters.nombreSucursal}
                   options={(sucursales||[]).map(s=>({value:s.nombreSucursal, label:s.nombreSucursal}))}
                   onChange={v=>setFilters({...filters, nombreSucursal:v||''})} />
@@ -328,12 +328,12 @@ function Empleados() {
 
       {/* ===== Tu tabla original (sin tocar) ===== */}
       <div className="emp-table">
-        <Table dataSource={filtered} columns={columns} loading={loading} pagination={{ pageSize: 8 }} />
+        <Table dataSource={filtered} columns={columns} loading={loading} pagination={{ pageSize: 8 }} scroll={{ x: true }} />
       </div>
 
       {/* ======= Modales originales (sin cambios) ======= */}
       <Modal visible={open} onCancel={()=>setOpen(false)} onOk={onSubmit}
-             title={mode==='create'?'Nuevo Empleado':'Editar Empleado'} okText={mode==='create'?'Crear':'Guardar'} confirmLoading={loading}>
+            title={mode==='create'?'Nuevo Empleado':'Editar Empleado'} okText={mode==='create'?'Crear':'Guardar'} confirmLoading={loading}>
         <Form form={form} layout="vertical">
           <Form.Item name="id_empleado" hidden><Input /></Form.Item>
           <Form.Item name="nombre_empleado" label="Nombre" rules={[{required:true,message:'Ingrese el nombre'}]}><Input /></Form.Item>
