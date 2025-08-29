@@ -3,9 +3,11 @@
 function App() {
 
     return (
+    <SessionGuard inactivityMs={600000}>
     <Router>
       <Routes />
     </Router>
+        </SessionGuard>
     )
 }
 

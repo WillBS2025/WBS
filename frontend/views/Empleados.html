@@ -1,7 +1,11 @@
 // <script type="text/jsx">
 function Empleados() {
-  const { useState, useEffect } = React;
+  const { useState, useEffect, useRef } = React; // ← useRef para animación KPI
   const { Table, Card, Button, Modal, Form, Input, Select, DatePicker, Space, Row, Col, InputNumber, Tag, message } = antd;
+
+  // === Íconos globales (igual que otras páginas)
+  const icons = (window.icons || window.iconsAntd || {});
+
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [sucursales, setSucursales] = useState([]);
@@ -47,11 +51,17 @@ function Empleados() {
       .withSuccessHandler(res => {
         try{
           const r = (typeof res==='string')? JSON.parse(res):res;
-          setSucursales((r && r.sucursales) || []);
+          if (Array.isArray(r)) {
+            setSucursales(r);
+          } else if (r && Array.isArray(r.sucursales)) {
+            setSucursales(r.sucursales);
+          } else {
+            setSucursales([]);
+          }
         }catch(_){ setSucursales([]); }
       })
       .withFailureHandler(() => setSucursales([]))
-      .listarSucursalesActivas();
+      .sucursales_listar_activas();   // ← antes: .listarSucursalesActivas()
   }
 
   useEffect(()=>{ cargar(); cargarSucursales(); }, []);
@@ -128,44 +138,208 @@ function Empleados() {
     { title:'F. Contratación', dataIndex:'fecha_contratacion', key:'fecha_contratacion', width:150 },
     { title:'Antigüedad', dataIndex:'antiguedad', key:'antiguedad', width:110 },
     { title:'Estado', dataIndex:'estado', key:'estado', width:110, render:s=>(<span className="ant-tag" style={{background:'#f6ffed',borderColor:'#b7eb8f',color:'#389e0d'}}>{s||''}</span>) },
-    { title:'', key:'acc', width:92, align:'center', render:(_,rec)=>(<Space direction="vertical" size={4}>
+    { title:'', key:'acc', width:92, align:'center', fixed:'right', render:(_,rec)=>(<Space direction="vertical" size={4}>
         <Button size="small" onClick={()=>abrirEditar(rec)} icon={<icons.EditOutlined />}>Editar</Button>
         <Button size="small" type="text" danger onClick={()=>abrirEliminar(rec)} icon={<icons.DeleteOutlined />}>Eliminar</Button>
       </Space>)
     }
   ];
 
-  return (
-    <Card title="Empleados" extra={(
-      <Space>
-        <Input placeholder="Buscar por nombre..." allowClear style={{width:240}} value={filters.nombre_empleado}
-               onChange={e=>setFilters({...filters, nombre_empleado:e.target.value})} />
-        <Select placeholder="Sucursal" allowClear style={{width:200}} value={filters.nombreSucursal}
-                options={(sucursales||[]).map(s=>({value:s.nombreSucursal, label:s.nombreSucursal}))}
-                onChange={v=>setFilters({...filters, nombreSucursal:v||''})} />
-        <Select placeholder="Estado" allowClear style={{width:150}} value={filters.estado}
-                options={[{value:'Activo',label:'Activo'},{value:'Inactivo',label:'Inactivo'}]}
-                onChange={v=>setFilters({...filters, estado:v||''})} />
-        <Button icon={<icons.ReloadOutlined />} onClick={cargar}>Refrescar</Button>
-        <Button type="primary" icon={<icons.PlusOutlined />} onClick={abrirNuevo}>Nuevo</Button>
-      </Space>
-    )}>
-      <Table dataSource={filtered} columns={columns} loading={loading} pagination={{ pageSize: 8 }} />
+  /* ========= NUEVO: helpers + KPIs + dashboards (estilo Sucursales) ========= */
+  function parseDate(v){
+    const d = v ? new Date(v) : null;
+    return (d && !isNaN(d)) ? d : null;
+  }
+  function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  function daysUntil(dateStr){
+    const d = parseDate(dateStr); if(!d) return null;
+    const today = startOfDay(new Date());
+    const next = new Date(today.getFullYear(), d.getMonth(), d.getDate());
+    if (next < today) next.setFullYear(next.getFullYear()+1);
+    return Math.round((next - today)/86400000);
+  }
+  function avg(arr){ return arr.length ? (arr.reduce((a,b)=>a+(b||0),0)/arr.length) : 0; }
+  function monthsBetween(a){
+    const d = parseDate(a); if(!d) return null;
+    const t = new Date();
+    return (t.getFullYear()-d.getFullYear())*12 + (t.getMonth()-d.getMonth());
+  }
+  function useCountUp(value, duration=700){
+    const [display, setDisplay] = useState(0);
+    const prevRef = useRef(0);
+    useEffect(()=>{
+      const start = performance.now();
+      const from = prevRef.current;
+      const to = Number(value||0);
+      let raf;
+      function tick(t){
+        const p = Math.min(1, (t - start)/duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setDisplay(from + (to - from) * eased);
+        if (p < 1) raf = requestAnimationFrame(tick);
+      }
+      raf = requestAnimationFrame(tick);
+      prevRef.current = to;
+      return ()=> cancelAnimationFrame(raf);
+    }, [value, duration]);
+    return display;
+  }
+  function KPI({ title, value, suffix }){
+    const v = useCountUp(value);
+    return (
+      <Card bodyStyle={{ padding: 14 }} className="emp-kpi">
+        <div className="emp-kpi-sub">{title}</div>
+        <div className="emp-kpi-val">{(typeof v==='number'? Math.round(v): v)}{suffix||''}</div>
+      </Card>
+    );
+  }
 
+  // Métricas (sobre la lista filtrada para que responda a los filtros)
+  const total = filtered.length;
+  const activos = filtered.filter(r => String(r.estado||'')==='Activo').length;
+  const inactivos = filtered.filter(r => String(r.estado||'')==='Inactivo').length;
+  const promMeses = avg(filtered.map(r => monthsBetween(r.fecha_contratacion)).filter(x=>x!=null));
+  const antiguedadPromAnos = (promMeses/12).toFixed(1);
+
+  const proximosCumples = filtered.map(r => {
+    const en = daysUntil(r.fecha_nacimiento);
+    if (en==null) return null;
+    return { nombre:r.nombre_empleado, nombreSucursal:r.nombreSucursal, enDias:en };
+  }).filter(Boolean).sort((a,b)=>a.enDias-b.enDias).slice(0,5);
+
+  const porSucursalMap = {};
+  filtered.forEach(r => {
+    const s = r.nombreSucursal || '(Sin suc.)';
+    porSucursalMap[s] = (porSucursalMap[s]||0) + 1;
+  });
+  const porSucursal = Object.keys(porSucursalMap).map((s)=>({ sucursal:s, cantidad:porSucursalMap[s] }))
+    .sort((a,b)=> b.cantidad - a.cantidad);
+
+  const generoMap = {};
+  filtered.forEach(r => { const g=(r.genero||'Otro'); generoMap[g]=(generoMap[g]||0)+1; });
+  const generoRows = Object.keys(generoMap).map(g=>({ genero:g, cantidad:generoMap[g] }));
+
+  const recientes = [...filtered]
+    .map(r => ({ ...r, _fc: parseDate(r.fecha_contratacion) }))
+    .filter(r => r._fc)
+    .sort((a,b)=> b._fc - a._fc)
+    .slice(0,6);
+
+  const colsCumples = [
+    { title:'Empleado', dataIndex:'nombre', key:'nombre' },
+    { title:'Sucursal', dataIndex:'nombreSucursal', key:'nombreSucursal', width:160 },
+    { title:'En', dataIndex:'enDias', key:'enDias', width:80, render:v=>(v===0?'Hoy':(v+' días')) }
+  ];
+  const colsSuc = [
+    { title:'Sucursal', dataIndex:'sucursal', key:'sucursal' },
+    { title:'Empleados', dataIndex:'cantidad', key:'cantidad', width:110, align:'right' },
+    { title:'', key:'bar', render:(_,r)=>{
+        const max = Math.max(1, ...porSucursal.map(x=>x.cantidad));
+        return (<div className="emp-bar"><span style={{width:(r.cantidad*100/max)+'%'}}/></div>);
+      }
+    }
+  ];
+  const colsGenero = [
+    { title:'Género', dataIndex:'genero', key:'genero' },
+    { title:'Cantidad', dataIndex:'cantidad', key:'cantidad', align:'right', width:110 }
+  ];
+  const colsRecientes = [
+    { title:'Fecha', dataIndex:'fecha_contratacion', key:'fecha_contratacion', width:110 },
+    { title:'Empleado', dataIndex:'nombre_empleado', key:'nombre_empleado' },
+    { title:'Sucursal', dataIndex:'nombreSucursal', key:'nombreSucursal', width:160 },
+    { title:'Estado', dataIndex:'estado', key:'estado', width:110, render:s=>(<Tag color={s==='Activo'?'green':'volcano'}>{s||''}</Tag>) }
+  ];
+
+  return (
+    <Card
+      title={<div className="emp-hero-title"><span className="emp-spark"></span>Empleados</div>}
+      extra={(
+        <Space>
+          <Input placeholder="Buscar por nombre..." allowClear style={{width:240}} value={filters.nombre_empleado}
+                  onChange={e=>setFilters({...filters, nombre_empleado:e.target.value})} />
+          <Select placeholder="Sucursal" allowClear style={{width:200}} value={filters.nombreSucursal}
+                  options={(sucursales||[]).map(s=>({value:s.nombreSucursal, label:s.nombreSucursal}))}
+                  onChange={v=>setFilters({...filters, nombreSucursal:v||''})} />
+          <Select placeholder="Estado" allowClear style={{width:150}} value={filters.estado}
+                  options={[{value:'Activo',label:'Activo'},{value:'Inactivo',label:'Inactivo'}]}
+                  onChange={v=>setFilters({...filters, estado:v||''})} />
+          <Button icon={<icons.ReloadOutlined />} onClick={cargar}>Refrescar</Button>
+          <Button type="primary" icon={<icons.PlusOutlined />} onClick={abrirNuevo}>Nuevo</Button>
+        </Space>
+      )}
+    >
+      {/* ===== Estilos scopeados como Sucursales ===== */}
+      <style>{`
+        .emp-hero-title{ position:relative; padding-left:12px; font-weight:800; }
+        .emp-spark{
+          position:absolute; left:0; top:6px; width:6px; height:22px; border-radius:3px;
+          background: linear-gradient(180deg,#60a5fa,#a78bfa,#34d399);
+          animation: empSpark 2.6s ease-in-out infinite;
+        }
+        @keyframes empSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
+
+        .emp-kpi{ border-radius:14px; background: linear-gradient(135deg,#e0eaff,#e9fff6); box-shadow: 0 2px 10px rgba(15,23,42,.06); }
+        .emp-kpi-sub{ font-size:12px; color:#6b7280 }
+        .emp-kpi-val{ font-size:26px; font-weight:800; color:#0f172a }
+
+        .emp-bar{ height:10px; background:#eef2ff; border-radius:999px; overflow:hidden; }
+        .emp-bar > span{ display:block; height:100%; background:linear-gradient(90deg,#60a5fa,#34d399); }
+
+        .emp-table .ant-table{ border-radius:14px; overflow:hidden; }
+        .emp-table .ant-table-thead > tr > th{ background:#f8fafc !important; border-bottom:0; color:#334155; font-weight:700; }
+        .emp-table .ant-table-tbody > tr{ transition: transform .15s ease, box-shadow .15s ease, background .2s; }
+        .emp-table .ant-table-tbody > tr:hover{ transform: scale(1.01); box-shadow: 0 10px 24px rgba(2,6,23,.08); }
+        .emp-table .ant-table-tbody > tr:nth-child(odd) td{ background:#fcfdff; }
+      `}</style>
+
+      {/* ===== KPIs ===== */}
+      <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+        <Col xs={24} sm={8}><KPI title="Antigüedad promedio" value={antiguedadPromAnos} suffix=" años" /></Col>
+        <Col xs={24} sm={8}><KPI title="Activos" value={activos} /></Col>
+        <Col xs={24} sm={8}><KPI title="Inactivos" value={inactivos} /></Col>
+      </Row>
+
+      {/* ===== Dashboards ===== */}
+      <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+        <Col xs={24} lg={12}>
+          <Card size="small" title="Género">
+            <Table size="small" dataSource={generoRows.map((r,i)=>({...r,key:i}))} columns={colsGenero} pagination={false} rowKey="key"/>
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card size="small" title="Distribución por sucursal">
+            <Table size="small" dataSource={porSucursal.map((r,i)=>({...r,key:i}))} columns={colsSuc} pagination={false} rowKey="key"/>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+        <Col xs={24} lg={12}>
+          <Card size="small" title="Próximos cumpleaños (Top 5)">
+            <Table size="small" dataSource={proximosCumples} columns={colsCumples} pagination={false} rowKey={(r,i)=>i}/>
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card size="small" title="Contrataciones recientes">
+            <Table size="small" dataSource={recientes} columns={colsRecientes} pagination={false} rowKey={(r,i)=>i}/>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* ===== Tu tabla original (sin tocar) ===== */}
+      <div className="emp-table">
+        <Table dataSource={filtered} columns={columns} loading={loading} pagination={{ pageSize: 8 }} scroll={{ x: true }} />
+      </div>
+
+      {/* ======= Modales originales (sin cambios) ======= */}
       <Modal visible={open} onCancel={()=>setOpen(false)} onOk={onSubmit}
-             title={mode==='create'?'Nuevo Empleado':'Editar Empleado'} okText={mode==='create'?'Crear':'Guardar'} confirmLoading={loading}>
+            title={mode==='create'?'Nuevo Empleado':'Editar Empleado'} okText={mode==='create'?'Crear':'Guardar'} confirmLoading={loading}>
         <Form form={form} layout="vertical">
           <Form.Item name="id_empleado" hidden><Input /></Form.Item>
-          <Form.Item name="nombre_empleado" label="Nombre" rules={[{required:true,message:'Ingrese el nombre'}]}>
-            <Input />
-          </Form.Item>
+          <Form.Item name="nombre_empleado" label="Nombre" rules={[{required:true,message:'Ingrese el nombre'}]}><Input /></Form.Item>
           <Form.Item name="fecha_nacimiento" label="Fecha de nacimiento"><DatePicker style={{width:"100%"}} format="YYYY-MM-DD" /></Form.Item>
-          <Form.Item name="fecha_contratacion" label="Fecha de contratación" rules={[{required:true,message:"Ingrese la fecha de contratación"}]}>
-            <DatePicker style={{width:"100%"}} format="YYYY-MM-DD" />
-          </Form.Item>
-          <Form.Item name="genero" label="Género">
-            <Select options={[{value:'Masculino',label:'Masculino'},{value:'Femenino',label:'Femenino'}]} allowClear />
-          </Form.Item>
+          <Form.Item name="fecha_contratacion" label="Fecha de contratación" rules={[{required:true,message:"Ingrese la fecha de contratación"}]}><DatePicker style={{width:"100%"}} format="YYYY-MM-DD" /></Form.Item>
+          <Form.Item name="genero" label="Género"><Select options={[{value:'Masculino',label:'Masculino'},{value:'Femenino',label:'Femenino'}]} allowClear /></Form.Item>
           <Form.Item name="telefono" label="Teléfono"><Input /></Form.Item>
           <Form.Item name="nombreSucursal" label="Sucursal" rules={[{required:true,message:'Seleccione la sucursal'}]}>
             <Select options={(sucursales||[]).map(s=>({value:s.nombreSucursal,label:s.nombreSucursal}))} />
@@ -182,4 +356,5 @@ function Empleados() {
     </Card>
   );
 }
+
 // </script>

@@ -10,7 +10,9 @@
     <div id="root"></div>
 </body>
 
-<components style="display: none;">
+    <?!= include('frontend/styles/mobileNavStyles') ?>
+
+    <components style="display: none;">
     <!-- importaciones -->
 
     <!-- constantes -->
@@ -41,9 +43,11 @@
     <?!= include('frontend/components/Header') ?>
     <?!= include('frontend/components/Sidebar') ?> 
     <?!= include('frontend/components/AppFooter') ?>
+    <?!= include('frontend/components/BottomNav') ?>
 
 
     <!-- componente raiz -->
+    <?!= include('frontend/components/SessionGuard') ?>
     <?!= include('frontend/App') ?>
 
 </components>

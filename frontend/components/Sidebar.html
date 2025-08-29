@@ -1,5 +1,4 @@
-//<script type="text/jsx">
-
+// <script type="text/jsx">
 function Sidebar({ collapsed, onCollapse, handleLogout }) {
   // === Roles (desde localStorage) ===
   const [role, setRole] = React.useState(() => {
@@ -8,121 +7,164 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
   const norm = (role || '').toString().trim().toLowerCase();
   const isAdmin = norm === 'admin';
   const isSuperAdmin = norm === 'super_admin';
-  // ================================
-  // ABRE EL SUBMENÚ SI LA URL ES /inventario
-  // ================================
+
+  // Guarda preferencia de colapso
+  React.useEffect(() => {
+    try { localStorage.setItem('wbCollapsed', collapsed ? '1' : '0'); } catch (_){}
+  }, [collapsed]);
+
+  // Abrir submenú según URL
   const defaultOpen = React.useMemo(() => {
     try {
       const p = (window.location.pathname || "");
       if (p.startsWith("/inventario")) return ["inventario"];
       if (p.startsWith("/Empleados") || p.startsWith("/Clientes") || p.startsWith("/Usuarios")) return ["personas"];
       return [];
-    } catch (_) {
-      return [];
-    }
+    } catch (_) { return []; }
   }, []);
 
   return (
-    /* JSX: AGREGO CLASE wb-sidebar PARA APLICAR TU CSS PERSONALIZADO */
     <Layout.Sider
-      className={`wb-sidebar ${collapsed ? "is-collapsed" : ""}`}  // APLICA ESTILO GLOBAL DEL SIDEBAR
+      className={`wb-sidebar ${collapsed ? "is-collapsed" : ""}`}
+      width={220}
+      collapsedWidth={72}
       collapsible
-      trigger={null}                  // JSX: DESACTIVA TRIGGER AUTOMÁTICO DE ANT DESIGN
-      collapsed={collapsed}           // JSX: CONTROL TOTAL DESDE EL PADRE
-      // onCollapse={onCollapse}      // JSX: DESACTIVADO PARA EVITAR AUTO-COLLAPSE
-      // breakpoint="lg"              // JSX: DESACTIVADO PARA QUE NO SE CIERRE POR RESPONSIVE
-      collapsedWidth="0"              // OCULTA COMPLETAMENTE EN COLAPSADO (SIGUE SIENDO CONTROLADO)
-      style={{ background: "transparent" }} // USAMOS FONDO DE TU CSS
+      trigger={null}
+      collapsed={collapsed}
+      style={{ background: "transparent" }}
     >
-      {/* LOGO / TITULO - USANDO ESTILO DEL LOGIN */}
+      <style>{`
+        .wb-sidebar{ --ease:cubic-bezier(.2,.8,.2,1); --logo-size:76px; --logo-font:28px;
+          position:relative; border-right:1px solid rgba(191,164,111,.25);
+          transition: width .28s var(--ease); backdrop-filter:saturate(120%) blur(4px); }
+        .wb-sidebar .ant-layout-sider-children{ padding:12px 8px; transition: padding .28s var(--ease); }
+        .wb-sidebar .wb-brand{ display:flex; align-items:center; gap:12px; padding:10px 10px 6px 10px; }
+        .wb-sidebar .wb-title{ color:#bfa46f; font-weight:800; letter-spacing:.3px; white-space:nowrap;
+          transition: opacity .25s var(--ease), transform .25s var(--ease); }
+        .wb-sidebar.is-collapsed .wb-title{ opacity:0; transform:translateX(-6px); pointer-events:none; }
+
+        .wb-divider{ height:1px; margin:8px 10px; background:linear-gradient(90deg,transparent,rgba(191,164,111,.35),transparent); }
+
+        /* Botón flotante collapse */
+        .wb-collapse-btn{ position:absolute; top:10px; right:-14px; z-index:5; width:28px; height:28px;
+          display:flex; align-items:center; justify-content:center; border-radius:999px;
+          background:#111; color:#bfa46f; border:1px solid rgba(191,164,111,.35);
+          box-shadow:0 8px 18px rgba(0,0,0,.25); cursor:pointer;
+          transition: transform .25s var(--ease), background .25s var(--ease); }
+        .wb-collapse-btn:hover{ transform:translateX(2px) scale(1.03); background:#151515; }
+
+        /* Menu */
+        .wb-sidebar .ant-menu{ background:transparent!important; border-inline-end:none!important; }
+        .wb-sidebar .ant-menu-item, .wb-sidebar .ant-menu-submenu-title{
+          margin:4px 8px; border-radius:10px; transition: background .2s var(--ease), transform .2s var(--ease);
+        }
+        .wb-sidebar .ant-menu-item:hover, .wb-sidebar .ant-menu-submenu-title:hover{
+          background:rgba(255,255,255,.04);
+        }
+        .wb-sidebar .ant-menu-item-selected{
+          background:rgba(191,164,111,.18)!important;
+        }
+        .wb-sidebar .ant-menu-item-selected::after{
+          content:''; position:absolute; left:-6px; top:8px; bottom:8px; width:3px; border-radius:3px; background:#bfa46f;
+        }
+
+        /* Logo que se reduce al colapsar */
+        .wb-logo{ width:var(--logo-size)!important; height:var(--logo-size)!important;
+          transition: width .28s var(--ease), height .28s var(--ease), transform .28s var(--ease);
+          display:flex; align-items:center; justify-content:center; border-width:2px!important; }
+        .wb-initials{ font-size:var(--logo-font)!important; transition:font-size .28s var(--ease); }
+        .wb-sidebar.is-collapsed{ --logo-size:44px; --logo-font:18px; }
+        .wb-sidebar.is-collapsed .wb-brand{ justify-content:center; gap:0; padding-left:0; padding-right:0; }
+        .wb-sidebar.is-collapsed .wb-logo{ border-width:1.5px!important; }
+      `}</style>
+
+      {/* Botón collapse */}
+      <button
+        className="wb-collapse-btn"
+        onClick={() => onCollapse && onCollapse(!collapsed)}
+        aria-label={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+        title={collapsed ? 'Expandir' : 'Colapsar'}
+      >
+        {collapsed ? <icons.MenuUnfoldOutlined/> : <icons.MenuFoldOutlined/>}
+      </button>
+
+      {/* Logo + título */}
       <div className="wb-brand">
-      <div className="w-20 h-20 flex items-center justify-center rounded-full border-2 border-[#bfa46f] shadow-md bg-[#111]">
-        <span className="text-3xl font-extrabold tracking-wide text-[#bfa46f]">WB</span>
-      </div>
-        {!collapsed && (
-          <div className="wb-title">Wilito BarberShop</div>
-        )}
+        <div className="wb-logo w-20 h-20 flex items-center justify-center rounded-full border-2 border-[#bfa46f] shadow-md bg-[#111]">
+          <span className="wb-initials text-3xl font-extrabold tracking-wide text-[#bfa46f]">WB</span>
+        </div>
+        {!collapsed && <div className="wb-title">Wilito BarberShop</div>}
       </div>
 
       <div className="wb-divider" />
 
-      {/* MENÚ PRINCIPAL */}
+      {/* Menú (sin Tooltip custom; usamos el nativo con title condicional) */}
       <Menu
         theme="dark"
         mode="inline"
+        inlineCollapsed={collapsed}
         defaultSelectedKeys={["1"]}
         defaultOpenKeys={defaultOpen}
-        style={{ background: "transparent", borderInlineEnd: "none" }}
+        style={{ background: "transparent" }}
       >
-        <Menu.Item key="1" icon={<icons.HomeOutlined />}>
+        <Menu.Item key="1" icon={<icons.HomeOutlined />} title={collapsed ? "Inicio" : ""}>
           <Link to="/">Inicio</Link>
         </Menu.Item>
 
         {isSuperAdmin && (
-        <Menu.Item key="2" icon={<icons.ScissorOutlined />}>
-          <Link to="/Servicios">Servicios</Link>
-        </Menu.Item>
+          <Menu.Item key="2" icon={<icons.ScissorOutlined />} title={collapsed ? "Servicios" : ""}>
+            <Link to="/Servicios">Servicios</Link>
+          </Menu.Item>
         )}
 
         {isSuperAdmin && (
-        <Menu.SubMenu key="personas" icon={<icons.TeamOutlined />} title="Personas">
-          <Menu.Item key="personas-empleados"><Link to="/Empleados">Empleados</Link></Menu.Item>
-          <Menu.Item key="personas-clientes"><Link to="/Clientes">Clientes</Link></Menu.Item>
-          <Menu.Item key="personas-usuarios"><Link to="/Usuarios">Usuarios</Link></Menu.Item>
-        </Menu.SubMenu>
+          <Menu.SubMenu key="personas" icon={<icons.TeamOutlined />} title="Personas">
+            <Menu.Item key="personas-empleados" title={collapsed ? "Empleados" : ""}>
+              <Link to="/Empleados">Empleados</Link>
+            </Menu.Item>
+            {/*<Menu.Item key="personas-clientes"><Link to="/Clientes">Clientes</Link></Menu.Item>*/}
+            <Menu.Item key="personas-usuarios" title={collapsed ? "Usuarios" : ""}>
+              <Link to="/Usuarios">Usuarios</Link>
+            </Menu.Item>
+          </Menu.SubMenu>
         )}
 
-        {/* ================================
-          INVENTARIO CON SUBMENÚ (2 SUBRAMA)
-           ================================ */}
-        <Menu.SubMenu
-          key="inventario"
-          icon={<icons.BarcodeOutlined />} // ICONO DEL PADRE
-          title="Inventario"
-        >
-          {/* SUBOPCIÓN: PRODUCTOS */}
-          <Menu.Item key="inventario-productos" icon={<icons.AppstoreOutlined />}>
-            <Link to="/inventario/Productos">
-              Productos
-            </Link>
+        <Menu.SubMenu key="inventario" icon={<icons.BarcodeOutlined />} title="Inventario">
+          <Menu.Item key="inventario-productos" icon={<icons.AppstoreOutlined />} title={collapsed ? "Productos" : ""}>
+            <Link to="/inventario/Productos">Productos</Link>
           </Menu.Item>
-
-          {/* SUBOPCIÓN: SUMINISTROS */}
-          <Menu.Item key="inventario-suministros" icon={<icons.ScissorOutlined/>}>
-            <Link to="/inventario/suministros">
-              Suministros
-            </Link>
+          <Menu.Item key="inventario-suministros" icon={<icons.ScissorOutlined/>} title={collapsed ? "Suministros" : ""}>
+            <Link to="/inventario/suministros">Suministros</Link>
           </Menu.Item>
         </Menu.SubMenu>
 
-        <Menu.Item key="5" icon={<icons.ShoppingCartOutlined />}>
+        <Menu.Item key="5" icon={<icons.ShoppingCartOutlined />} title={collapsed ? "Ventas" : ""}>
           <Link to="/Ventas">Ventas</Link>
         </Menu.Item>
 
         {isSuperAdmin && (
-        <Menu.Item key="gastos" icon={<icons.DollarOutlined />}>
-          <Link to="/Gastos">Gastos</Link>
-        </Menu.Item>
+          <Menu.Item key="gastos" icon={<icons.DollarOutlined />} title={collapsed ? "Gastos" : ""}>
+            <Link to="/Gastos">Gastos</Link>
+          </Menu.Item>
         )}
 
         {isSuperAdmin && (
-        <Menu.Item key="6" icon={<icons.LineChartOutlined />}>
-          <Link to="/Reportes">Reportes</Link>
-        </Menu.Item>
+          <Menu.Item key="6" icon={<icons.LineChartOutlined />} title={collapsed ? "Reportes" : ""}>
+            <Link to="/Reportes">Reportes</Link>
+          </Menu.Item>
         )}
 
         {isSuperAdmin && (
-        <Menu.Item key="8" icon={<icons.ShopOutlined />}>
-          <Link to="/Sucursales">Sucursales</Link>
-        </Menu.Item>
+          <Menu.Item key="8" icon={<icons.ShopOutlined />} title={collapsed ? "Sucursales" : ""}>
+            <Link to="/Sucursales">Sucursales</Link>
+          </Menu.Item>
         )}
 
-        <Menu.Item key="7" icon={<icons.LogoutOutlined />} onClick={handleLogout}>
-          Cerrar Sesión
+        <Menu.Item key="7" icon={<icons.LogoutOutlined />} onClick={handleLogout} title={collapsed ? "Cerrar Sesión" : ""}>
+          <span>Cerrar Sesión</span>
         </Menu.Item>
       </Menu>
     </Layout.Sider>
   );
 }
-
-//</script>
+// </script>

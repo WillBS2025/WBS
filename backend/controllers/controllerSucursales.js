@@ -1,173 +1,185 @@
 /**
- * controllerSucursales.js – CRUD completo Sucursales
- * Hoja: env_().SH_SUCURSALES (por defecto "sucursales")
- * Columnas esperadas (en este orden):
- * id | nombreSucursal | fechaInauguracion | telefono | direccion | correoElectronico | estado
+ * controllerSucursales.js – CRUD de sucursales
+ * Hoja: env_().SH_SUCURSALES (por defecto "Sucursales")
+ * Columnas tolerantes a encabezados:
+ *  id | nombreSucursal | fechaInauguracion (alias: fechainauguracion/fechalnauguracion/fechainaguracion) |
+ *  telefono | direccion | correoElectronico (alias: correo/email) | estado
  */
+var SHEET_SUCURSALES = (typeof env_ === 'function' && env_().SH_SUCURSALES) || 'Sucursales';
 
-var SHEET_SUCURSALES = (typeof env_ === 'function' && env_().SH_SUCURSALES) || 'sucursales';
-
-/** =========================
- *  UTILIDADES
- *  =======================*/
-function _headers_(sheet){
-  return sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0];
+/* ========== Helpers base ========== */
+function _getSheetSuc_() {
+  if (typeof obtenerSheet === 'function') return obtenerSheet(SHEET_SUCURSALES);
+  return SpreadsheetApp.getActive().getSheetByName(SHEET_SUCURSALES);
 }
-function _firstFreeId_(sheet, headers){
-  var idCol = headers.indexOf('id') + 1;
-  if (idCol <= 0) throw new Error('No existe columna id.');
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return 1;
-  var ids = sheet.getRange(2, idCol, lastRow - 1, 1).getValues();
+function _getValues_(sh) {
+  return sh.getDataRange().getValues();
+}
+function _normKey_(s) {
+  s = String(s || "").trim();
+  var k = s.replace(/\s+/g, "").toLowerCase();
+  if (k === "id") return "id";
+  if (k === "nombresucursal" || k === "sucursal") return "nombreSucursal";
+  if (k === "fechainauguracion" || k === "fechalnauguracion" || k === "fechainaguracion") return "fechaInauguracion";
+  if (k === "telefono" || k === "tel") return "telefono";
+  if (k === "direccion" || k === "dirección") return "direccion";
+  if (k === "correoelectronico" || k === "correo" || k === "email") return "correoElectronico";
+  if (k === "estado") return "estado";
+  return s; // devuelve original si no se reconoce
+}
+function _headers_(sh) {
+  var values = _getValues_(sh);
+  if (!values || values.length === 0) return [];
+  return values[0].map(function (h) { return String(h || ""); });
+}
+function _indexMap_(headers) {
+  var m = {};
+  for (var i = 0; i < headers.length; i++) {
+    m[_normKey_(headers[i])] = i;
+  }
+  return m;
+}
+function _nextId_(rows, idx) {
   var max = 0;
-  for (var i=0;i<ids.length;i++){
-    var n = Number(ids[i][0]);
-    if (isFinite(n) && n > max) max = n;
+  for (var i = 0; i < rows.length; i++) {
+    var v = Number(rows[i][idx]);
+    if (!isNaN(v) && v > max) max = v;
   }
-  return max + 1;
+  return (max + 1);
 }
-function _parseFecha_(v){
-  if (!v) return '';
-  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v)) {
-    return new Date(v.getFullYear(), v.getMonth(), v.getDate());
-  }
-  if (typeof v === 'string'){
-    var s = v.trim();
-    // yyyy-mm-dd
-    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (m){
-      var d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-      return isNaN(d) ? '' : d;
-    }
-    // dd/mm/yyyy o dd-mm-yyyy
-    var m2 = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-    if (m2){
-      var dd = Number(m2[1]), mm = Number(m2[2]) - 1, yy = Number(m2[3]);
-      if (yy < 100) yy += 2000;
-      var d2 = new Date(yy, mm, dd);
-      return isNaN(d2) ? '' : d2;
-    }
-  }
-  var d0 = new Date(v);
-  return isNaN(d0) ? '' : d0;
+function _safeJSON_(x) {
+  try { return (typeof x === "string") ? JSON.parse(x) : x; } catch (e) { return x; }
 }
 
-/** =========================
- *  LISTAR (todo)
- *  =======================*/
-function listarSucursales(){
-  try{
-    var sheet = obtenerSheet(SHEET_SUCURSALES);
-    var data = _read(sheet) || [];
-    return JSON.stringify(data);
-  }catch(err){
-    return JSON.stringify({ ok:false, message: 'Error al listar: ' + err });
-  }
-}
+/* =========================
+ * NUEVOS NOMBRES (core)
+ * ========================= */
 
-/** =========================
- *  CREAR
- *  =======================*/
-function crearSucursal(sucursal){
-  try{
-    var sheet = obtenerSheet(SHEET_SUCURSALES);
-    var headers = _headers_(sheet);
-    var obj = (typeof sucursal === 'string') ? JSON.parse(sucursal) : (sucursal || {});
-
-    if (!obj || !obj.nombreSucursal) return JSON.stringify({ ok:false, message:'Falta nombreSucursal' });
-
-    var nextId = _firstFreeId_(sheet, headers);
-    obj.id = nextId;
-
-    // Normalizaciones
-    obj.telefono = (obj.telefono == null ? '' : String(obj.telefono));
-    obj.correoElectronico = (obj.correoElectronico == null ? '' : String(obj.correoElectronico));
-    obj.direccion = (obj.direccion == null ? '' : String(obj.direccion));
-    obj.estado = (obj.estado == null || String(obj.estado).trim() === '') ? 'Activo' : String(obj.estado).trim();
-    obj.fechaInauguracion = _parseFecha_(obj.fechaInauguracion);
-
-    // Construir fila en orden de encabezados
-    var row = headers.map(function(h){ var v = obj[h]; return (v == null ? '' : v); });
-    sheet.appendRow(row);
-
-    return JSON.stringify({ ok:true, id: nextId });
-  }catch(err){
-    return JSON.stringify({ ok:false, message: 'Error al crear: ' + err });
-  }
-}
-
-/** =========================
- *  ACTUALIZAR (por id)
- *  =======================*/
-function actualizarSucursal(sucursal){
-  try{
-    var sheet = obtenerSheet(SHEET_SUCURSALES);
-    var headers = _headers_(sheet);
-    var obj = (typeof sucursal === 'string') ? JSON.parse(sucursal) : (sucursal || {});
-
-    if (obj == null || obj.id == null || String(obj.id).trim() === '')
-      return JSON.stringify({ ok:false, message:'Falta id' });
-
-    var idCol = headers.indexOf('id') + 1; if (idCol <= 0) return JSON.stringify({ ok:false, message:'No existe columna id.'});
-
-    var lastRow = sheet.getLastRow(); if (lastRow < 2) return JSON.stringify({ ok:false, message:'No hay datos.' });
-    var ids = sheet.getRange(2, idCol, lastRow - 1, 1).getValues();
-    var targetRow = -1; var needle = String(obj.id);
-    for (var i=0;i<ids.length;i++){ if (String(ids[i][0]) === needle){ targetRow = i+2; break; } }
-    if (targetRow === -1) return JSON.stringify({ ok:false, message:'Id no encontrado.' });
-
-    // Normalizaciones
-    obj.fechaInauguracion = _parseFecha_(obj.fechaInauguracion);
-
-    var currentId = sheet.getRange(targetRow, idCol).getValue();
-    var out = headers.map(function(h){
-      var v = obj[h];
-      if (h === 'id') v = currentId; // no permitir cambiar id
-      return (v == null ? '' : v);
-    });
-    sheet.getRange(targetRow, 1, 1, headers.length).setValues([out]);
-
-    return JSON.stringify({ ok:true, id: currentId });
-  }catch(err){
-    return JSON.stringify({ ok:false, message: 'Error al actualizar: ' + err });
-  }
-}
-
-/** =========================
- *  ELIMINAR (por id)
- *  =======================*/
-function eliminarSucursal(id){
-  try{
-    var sheet = obtenerSheet(SHEET_SUCURSALES);
-    Delete(id, sheet); // usa tu helper deleteRow.js existente
-    return JSON.stringify({ ok:true });
-  }catch(err){
-    return JSON.stringify({ ok:false, message: 'Error al eliminar: ' + err });
-  }
-}
-
-/** =========================
- *  LISTAR SOLO ACTIVAS (para selects de Productos)
- *  =======================*/
-function listarSucursalesActivas() {
+/* ========== Listar ========== */
+function sucursales_listar() {
   try {
-    var nombreHoja = (env_ && typeof env_ === 'function' && env_().SH_SUCURSALES) || 'sucursales';
-    var sheet = obtenerSheet(nombreHoja);
-    var rows = _read(sheet) || [];
-
+    var sh = _getSheetSuc_();
+    var values = _getValues_(sh);
+    if (!values || values.length < 2) return JSON.stringify([]);
+    var headers = _headers_(sh);
+    var map = _indexMap_(headers);
     var out = [];
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i] || {};
-      var estado = (r.estado || '').toString().toLowerCase().trim();
-      if (estado === 'activo' || estado === 'activa') {
-        out.push({ id: r.id, nombreSucursal: r.nombreSucursal });
-      }
+    for (var r = 1; r < values.length; r++) {
+      var row = values[r];
+      if (row.join("") === "") continue; // fila vacía
+      out.push({
+        id: row[map.id],
+        nombreSucursal: row[map.nombreSucursal],
+        fechaInauguracion: row[map.fechaInauguracion],
+        telefono: row[map.telefono],
+        direccion: row[map.direccion],
+        correoElectronico: row[map.correoElectronico],
+        estado: row[map.estado],
+      });
     }
-    out.sort(function (a, b) {
-      return String(a.nombreSucursal || '').localeCompare(String(b.nombreSucursal || ''), 'es');
-    });
-    return JSON.stringify({ ok: true, sucursales: out });
-  } catch (err) {
-    return JSON.stringify({ ok: false, message: 'Error al listar sucursales: ' + err });
+    return JSON.stringify(out);
+  } catch (e) {
+    return JSON.stringify({ ok: false, message: "Error al listar sucursales: " + e });
   }
 }
+
+function sucursales_listar_activas() {
+  var raw = sucursales_listar();
+  try {
+    var arr = (typeof raw === "string") ? JSON.parse(raw) : raw;
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(function (x) {
+      return String(x.estado || "").toLowerCase().indexOf("activo") !== -1;
+    });
+  } catch (e) {
+    return raw;
+  }
+}
+
+/* =========== Crear =========== */
+function sucursales_crear(sucursal) {
+  try {
+    var sh = _getSheetSuc_();
+    var headers = _headers_(sh);
+    if (!headers.length) throw new Error("La hoja de sucursales no tiene encabezados");
+    var map = _indexMap_(headers);
+    var data = _getValues_(sh);
+    var body = data.slice(1);
+    var obj = _safeJSON_(sucursal) || {};
+
+    // calcular id si no viene
+    if (!obj.id) {
+      obj.id = _nextId_(body, map.id);
+    }
+    if (!obj.estado) obj.estado = "Activo";
+
+    // preparar fila en el orden de headers
+    var row = new Array(headers.length);
+    for (var c = 0; c < headers.length; c++) {
+      var key = _normKey_(headers[c]);
+      row[c] = (obj[key] != null ? obj[key] : "");
+    }
+    sh.appendRow(row);
+    return JSON.stringify({ ok: true, id: obj.id });
+  } catch (e) {
+    return JSON.stringify({ ok: false, message: "No se pudo crear: " + e });
+  }
+}
+
+/* ========== Actualizar ========== */
+function sucursales_actualizar(sucursal) {
+  try {
+    var sh = _getSheetSuc_();
+    var headers = _headers_(sh);
+    var map = _indexMap_(headers);
+    var obj = _safeJSON_(sucursal) || {};
+    if (!obj || !obj.id) return JSON.stringify({ ok: false, message: "Falta id" });
+
+    var values = _getValues_(sh);
+    var targetRow = -1;
+    for (var r = 1; r < values.length; r++) {
+      if (String(values[r][map.id]) === String(obj.id)) { targetRow = r + 1; break; }
+    }
+    if (targetRow === -1) return JSON.stringify({ ok: false, message: "Sucursal no encontrada" });
+
+    for (var k in obj) {
+      if (!obj.hasOwnProperty(k)) continue;
+      var nk = _normKey_(k);
+      var col = map[nk];
+      if (col == null || col < 0) continue;
+      sh.getRange(targetRow, col + 1).setValue(obj[k]);
+    }
+    return JSON.stringify({ ok: true });
+  } catch (e) {
+    return JSON.stringify({ ok: false, message: "No se pudo actualizar: " + e });
+  }
+}
+
+/* ========== Eliminar ========== */
+function sucursales_eliminar(id) {
+  try {
+    var sh = _getSheetSuc_();
+    var headers = _headers_(sh);
+    var map = _indexMap_(headers);
+    var values = _getValues_(sh);
+    var targetRow = -1;
+    for (var r = 1; r < values.length; r++) {
+      if (String(values[r][map.id]) === String(id)) { targetRow = r + 1; break; }
+    }
+    if (targetRow === -1) return JSON.stringify({ ok: false, message: "Sucursal no encontrada" });
+    sh.deleteRow(targetRow);
+    return JSON.stringify({ ok: true });
+  } catch (e) {
+    return JSON.stringify({ ok: false, message: "No se pudo eliminar: " + e });
+  }
+}
+
+/* =========================
+ * ALIAS de compatibilidad
+ * (no eliminar, no cambian lógica)
+ * ========================= */
+function listarSucursales()           { return sucursales_listar.apply(this, arguments); }
+function listarSucursalesActivas()    { return sucursales_listar_activas.apply(this, arguments); }
+function crearSucursal(s)             { return sucursales_crear.apply(this, arguments); }
+function actualizarSucursal(s)        { return sucursales_actualizar.apply(this, arguments); }
+function eliminarSucursal(id)         { return sucursales_eliminar.apply(this, arguments); }

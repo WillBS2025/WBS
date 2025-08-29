@@ -9,6 +9,9 @@ function env_(){
             // HOJA PRODUCTOS
             SH_PRODUCTOS: "productos",
 
+            // HOJA PRODUCTOS 2 (para ventas con precio_compra)
+            SH_PRODUCTOS2: "productos2",
+
             // HOJA SERVICIOS
             SH_SERVICIOS: "servicios",
 
@@ -25,9 +28,16 @@ function env_(){
             SH_CLIENTES: "clientes",
 
             // HOJA SUCURSALES
-            SH_SUCURSALES: "sucursales",
+            SH_SUCURSALES: "Sucursales",
 
             // HOJA GASTOS
-            SH_GASTOS: "Gastos"
+            SH_GASTOS: "Gastos",// HOJA FACTURAS
+            SH_FACTURAS: "facturas",
+
+            // HOJA DETALLE FACTURA
+            SH_DETALLE_FACTURA: "detalle_factura",
+
+            // HOJA DESCUENTOS
+            SH_DESCUENTOS: "descuentos",
     };
 }

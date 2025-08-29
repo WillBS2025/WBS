@@ -1,12 +1,16 @@
 // <script type="text/jsx">
 function Servicios() {
-  const { useState, useEffect } = React;
-  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, Row, Col, Divider, message, Tag } = antd;
+  const { useState, useEffect, useMemo } = React;
+  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, Row, Col, Divider, message, Tag, Tabs } = antd;
 
   // ===== Estado =====
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [sucursales, setSucursales] = useState([]);
+
+  // pestaña activa (sucursal) + bloqueo del select en "Nuevo"
+  const [activeSucursal, setActiveSucursal] = useState(undefined);
+  const [lockSucursal, setLockSucursal] = useState(false);
 
   // Modal + formulario
   const [form] = Form.useForm();
@@ -14,6 +18,13 @@ function Servicios() {
   const [modalMode, setModalMode] = useState('create'); // 'create' | 'edit'
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [toDelete, setToDelete] = useState(null);
+
+  // Utilidad para mostrar moneda en KPI
+  function formatHNL(n){
+    n = Number(n)||0;
+    try{ return new Intl.NumberFormat('es-HN',{style:'currency',currency:'HNL',maximumFractionDigits:2}).format(n); }
+    catch(_){ return 'L. '+(Math.round(n*100)/100).toFixed(2); }
+  }
 
   // ===== Cargar servicios =====
   function cargar(){
@@ -36,30 +47,52 @@ function Servicios() {
       .listarServicios();
   }
 
-  // ===== Cargar sucursales para el Select =====
+  // ===== Cargar sucursales para el Select / Tabs =====
   function cargarSucursales(){
     google.script.run
       .withSuccessHandler(function(res){
         try{
           var r = (typeof res === 'string') ? JSON.parse(res) : res;
-          if (r && r.ok && r.sucursales) setSucursales(r.sucursales);
-          else setSucursales([]);
+          var arr = Array.isArray(r) ? r : (r && r.ok && Array.isArray(r.sucursales) ? r.sucursales : []);
+          var activas = arr.filter(function(s){
+            var st = (s && s.estado) ? String(s.estado).toLowerCase() : 'activo';
+            return st.includes('activo');
+          });
+          setSucursales(activas);
+          if (!activeSucursal && activas.length > 0){
+            setActiveSucursal(activas[0].nombreSucursal);
+          }
         }catch(_){ setSucursales([]); }
       })
       .withFailureHandler(function(){ setSucursales([]); })
-      .listarSucursalesActivas();
+      .sucursales_listar_activas();
   }
 
   useEffect(function(){ cargar(); cargarSucursales(); }, []);
+  useEffect(function(){
+    if (!activeSucursal && sucursales.length>0){
+      setActiveSucursal(sucursales[0].nombreSucursal);
+    }
+    if (activeSucursal && sucursales.length>0){
+      var existe = sucursales.some(function(s){ return s.nombreSucursal === activeSucursal; });
+      if (!existe) setActiveSucursal(sucursales[0].nombreSucursal);
+    }
+  }, [sucursales, activeSucursal]);
 
   // ===== Modales =====
   function abrirNuevo(){
     setModalMode('create');
+    setLockSucursal(true);
     form.resetFields();
+    form.setFieldsValue({
+      nombre_sucursal: activeSucursal || undefined,
+      estado: 'Activo'
+    });
     setModalOpen(true);
   }
   function abrirEditar(rec){
     setModalMode('edit');
+    setLockSucursal(false);
     form.setFieldsValue({
       id_servicios: rec.id_servicios,
       nombre_servicio: rec.nombre_servicio || '',
@@ -70,11 +103,7 @@ function Servicios() {
     });
     setModalOpen(true);
   }
-
-  function abrirEliminar(rec){
-    setToDelete(rec);
-    setDeleteOpen(true);
-  }
+  function abrirEliminar(rec){ setToDelete(rec); setDeleteOpen(true); }
 
   // ===== Crear / Actualizar =====
   function onSubmit(){
@@ -82,6 +111,7 @@ function Servicios() {
       setLoading(true);
       var payload = Object.assign({}, values);
       if (modalMode === 'create'){
+        if (!payload.nombre_sucursal) payload.nombre_sucursal = activeSucursal || '';
         google.script.run
           .withSuccessHandler(function(res){
             setLoading(false);
@@ -89,9 +119,7 @@ function Servicios() {
               var r = (typeof res === 'string') ? JSON.parse(res) : res;
               if (r && r.ok){ message.success('Servicio creado'); setModalOpen(false); cargar(); }
               else { Modal.error({ title:'No se pudo crear', content: (r && r.message) || 'Error desconocido' }); }
-            }catch(e){
-              Modal.error({ title:'Error', content:'Respuesta inválida del servidor.' });
-            }
+            }catch(e){ Modal.error({ title:'Error', content:'Respuesta inválida del servidor.' }); }
           })
           .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content:String((err&&err.message)||err) }) })
           .crearServicio(payload);
@@ -103,9 +131,7 @@ function Servicios() {
               var r = (typeof res === 'string') ? JSON.parse(res) : res;
               if (r && r.ok){ message.success('Servicio actualizado'); setModalOpen(false); cargar(); }
               else { Modal.error({ title:'No se pudo actualizar', content: (r && r.message) || 'Error desconocido' }); }
-            }catch(e){
-              Modal.error({ title:'Error', content:'Respuesta inválida del servidor.' });
-            }
+            }catch(e){ Modal.error({ title:'Error', content:'Respuesta inválida del servidor.' }); }
           })
           .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content:String((err&&err.message)||err) }) })
           .actualizarServicio(payload);
@@ -140,7 +166,7 @@ function Servicios() {
     { title:'Sucursal', dataIndex:'nombre_sucursal', key:'nombre_sucursal', width:220 },
     { title:'Estado', dataIndex:'estado', key:'estado', width:110,
       render: (s) => <span className="ant-tag" style={{background:'#f6ffed', borderColor:'#b7eb8f', color:'#389e0d'}}>{s || ''}</span> },
-    { title:'', key:'acciones', className:'col-actions', width:92, align:'center',
+    { title:'', key:'acciones', className:'col-actions', width:92, align:'center', fixed:'right',
       render:(_,rec)=>(
         <Space direction="vertical" size={4}>
           <Button size="small" onClick={()=>abrirEditar(rec)} icon={<icons.EditOutlined />}>Editar</Button>
@@ -150,55 +176,164 @@ function Servicios() {
     }
   ];
 
-  return (
-    <Card title="Servicios" extra={(
-      <Space>
-        <Button icon={<icons.ReloadOutlined />} onClick={cargar}>Refrescar</Button>
-        <Button type="primary" icon={<icons.ScissorOutlined />} onClick={abrirNuevo}>Nuevo</Button>
-      </Space>
-    )}>
-      <Table dataSource={data} columns={columns} loading={loading} pagination={{ pageSize: 8 }} />
-      
-      {/* Modal Crear/Editar */}
-      <Modal
-        visible={modalOpen}
-        onCancel={()=>setModalOpen(false)}
-        onOk={onSubmit}
-        title={modalMode === 'create' ? 'Nuevo Servicio' : 'Editar Servicio'}
-        okText={modalMode === 'create' ? 'Crear' : 'Guardar'}
-        confirmLoading={loading}
-      >
-        <Form form={form} layout="vertical">
-          <Form.Item name="id_servicios" hidden><Input /></Form.Item>
-          <Form.Item label="Nombre del servicio" name="nombre_servicio" rules={[{ required:true, message:'Ingrese el nombre del servicio' }]}>
-            <Input placeholder="Ej. Corte de cabello" />
-          </Form.Item>
-          <Form.Item label="Descripción" name="descripcion">
-            <Input.TextArea rows={3} placeholder="Detalles del servicio" />
-          </Form.Item>
-          <Form.Item label="Precio" name="precio" rules={[{ required:true, message:'Ingrese el precio' }]}>
-            <InputNumber min={0} step={1} precision={2} style={{width:'100%'}} />
-          </Form.Item>
-          <Form.Item label="Sucursal" name="nombre_sucursal" rules={[{ required:true, message:'Seleccione una sucursal' }]}>
-            <Select
-              placeholder="Seleccione sucursal"
-              options={(sucursales || []).map(function(s){ return { value: s.nombreSucursal, label: s.nombreSucursal }; })}
-            />
-          </Form.Item>
-          <Form.Item label="Estado" name="estado" initialValue="Activo">
-            <Select options={[{value:'Activo',label:'Activo'},{value:'Inactivo',label:'Inactivo'}]} />
-          </Form.Item>
-        </Form>
-      </Modal>
+  // ===== Filtrado por pestaña =====
+  const dataPorSucursal = function(nombre){
+    if (!nombre) return data;
+    return (data || []).filter(function(r){ return String(r.nombre_sucursal||'') === String(nombre); });
+  };
 
-      {/* Modal Eliminar */}
-      <Modal visible={deleteOpen} onCancel={()=>{setDeleteOpen(false); setToDelete(null);}}
-             title="Confirmar eliminación" okType="danger" okText="Eliminar"
-             onOk={confirmarEliminar} confirmLoading={loading}>
-        <p>¿Seguro que deseas eliminar el servicio <b>{toDelete ? (toDelete.nombre_servicio || ('ID ' + toDelete.id_servicios)) : ''}</b>?</p>
-        <p>Esta acción no se puede deshacer.</p>
-      </Modal>
-    </Card>
+  // ===== KPIs (derivados de la pestaña activa) =====
+  const datasetActiva = useMemo(function(){
+    return dataPorSucursal(activeSucursal);
+  }, [data, activeSucursal]);
+
+  const kpiTotal = datasetActiva.length;
+  const kpiActivos = datasetActiva.filter(function(r){
+    return String(r.estado||'').toLowerCase().includes('activo');
+  }).length;
+  const kpiPromedio = (function(){
+    var lista = datasetActiva.map(function(r){ return Number(r.precio||0); }).filter(function(n){ return isFinite(n); });
+    if (!lista.length) return 0;
+    var s = lista.reduce(function(a,b){ return a+b; }, 0);
+    return s / lista.length;
+  })();
+
+  return (
+    <div className="servicios-wrap">
+      <Card
+        title={<div className="svc-hero-title"><span className="svc-spark"></span>Servicios</div>}
+        extra={(
+          <Space>
+            <Button icon={<icons.ReloadOutlined />} onClick={cargar}>Refrescar</Button>
+            <Button type="primary" icon={<icons.ScissorOutlined />} onClick={abrirNuevo}>Nuevo</Button>
+          </Space>
+        )}
+      >
+
+        {/* ===== ESTILOS, igual línea visual que Sucursales ===== */}
+        <style>{`
+          .servicios-wrap * { box-sizing: border-box; }
+          .svc-hero-title{ position:relative; padding-left:12px; font-weight:800; }
+          .svc-spark{
+            position:absolute; left:0; top:6px; width:6px; height:22px; border-radius:3px;
+            background: linear-gradient(180deg,#60a5fa,#a78bfa,#34d399);
+            animation: svcSpark 2.6s ease-in-out infinite;
+          }
+          @keyframes svcSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
+
+          /* KPIs estilo sucursales */
+          .svc-kpi{ border-radius:14px; background: linear-gradient(135deg,#e0eaff,#e9fff6); box-shadow: 0 2px 10px rgba(15,23,42,.06); }
+          .svc-kpi-sub{ font-size:12px; color:#6b7280 }
+          .svc-kpi-val{ font-size:26px; font-weight:800; color:#0f172a }
+
+          /* Tabla con header pastel y hover sutil */
+          .servicios-wrap .svc-table .ant-table{ border-radius:14px; overflow:hidden; }
+          .servicios-wrap .svc-table .ant-table-thead > tr > th{
+            background:#f8fafc !important; border-bottom:0; color:#334155; font-weight:700;
+          }
+          .servicios-wrap .svc-table .ant-table-tbody > tr{
+            transition: transform .15s ease, box-shadow .15s ease, background .2s;
+            animation: svcFadeUp .35s ease both;
+          }
+          @keyframes svcFadeUp{ from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:translateY(0) } }
+          .servicios-wrap .svc-table .ant-table-tbody > tr:hover{
+            transform: scale(1.01); box-shadow: 0 10px 24px rgba(2,6,23,.08);
+          }
+          .servicios-wrap .svc-table .ant-table-tbody > tr:nth-child(odd) td{ background:#fcfdff; }
+        `}</style>
+
+        {/* ====== KPIs (máx 3) ====== */}
+        <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+          <Col xs={24} sm={8}>
+            <Card className="svc-kpi" bodyStyle={{padding:14}}>
+              <div className="svc-kpi-sub">Total de servicios</div>
+              <div className="svc-kpi-val">{kpiTotal}</div>
+            </Card>
+          </Col>
+          <Col xs={24} sm={8}>
+            <Card className="svc-kpi" bodyStyle={{padding:14}}>
+              <div className="svc-kpi-sub">Activos</div>
+              <div className="svc-kpi-val">{kpiActivos}</div>
+            </Card>
+          </Col>
+          <Col xs={24} sm={8}>
+            <Card className="svc-kpi" bodyStyle={{padding:14}}>
+              <div className="svc-kpi-sub">Precio promedio</div>
+              <div className="svc-kpi-val">{formatHNL(kpiPromedio)}</div>
+            </Card>
+          </Col>
+        </Row>
+
+        {/* ===== Pestañas por sucursal + tablas (sin tocar lógica) ===== */}
+        {Array.isArray(sucursales) && sucursales.length > 0 ? (
+          <Tabs
+            activeKey={activeSucursal || (sucursales[0] && sucursales[0].nombreSucursal)}
+            onChange={setActiveSucursal}
+          >
+            {sucursales.map(function(suc){
+              const key = suc.nombreSucursal;
+              return (
+                <Tabs.TabPane tab={key} key={key}>
+                  <Table
+                    className="svc-table"
+                    dataSource={dataPorSucursal(key)}
+                    columns={columns}
+                    loading={loading}
+                    pagination={{ pageSize: 8 }}
+                    scroll={{ x: true }}
+                    rowKey={(r)=> (r && r.id != null) ? r.id : (r && r.id_servicios) || r.key}
+                  />
+                </Tabs.TabPane>
+              );
+            })}
+          </Tabs>
+        ) : (
+          <Table className="svc-table" dataSource={data} columns={columns} loading={loading} pagination={{ pageSize: 8 }} scroll={{ x: true }} />
+        )}
+
+        {/* ===== Modal Crear/Editar ===== */}
+        <Modal
+          visible={modalOpen}
+          onCancel={()=>setModalOpen(false)}
+          onOk={onSubmit}
+          title={modalMode === 'create' ? 'Nuevo Servicio' : 'Editar Servicio'}
+          okText={modalMode === 'create' ? 'Crear' : 'Guardar'}
+          confirmLoading={loading}
+        >
+          <Form form={form} layout="vertical">
+            <Form.Item name="id_servicios" hidden><Input /></Form.Item>
+            <Form.Item label="Nombre del servicio" name="nombre_servicio" rules={[{ required:true, message:'Ingrese el nombre del servicio' }]}>
+              <Input placeholder="Ej. Corte de cabello" />
+            </Form.Item>
+            <Form.Item label="Descripción" name="descripcion">
+              <Input.TextArea rows={3} placeholder="Detalles del servicio" />
+            </Form.Item>
+            <Form.Item label="Precio" name="precio" rules={[{ required:true, message:'Ingrese el precio' }]}>
+              <InputNumber min={0} step={1} precision={2} style={{width:'100%'}} />
+            </Form.Item>
+            <Form.Item label="Sucursal" name="nombre_sucursal" rules={[{ required:true, message:'Seleccione una sucursal' }]}>
+              {/* En modo CREAR, se bloquea según pestaña activa */}
+              <Select
+                placeholder="Seleccione sucursal"
+                disabled={lockSucursal}
+                options={(sucursales || []).map(function(s){ return { value: s.nombreSucursal, label: s.nombreSucursal }; })}
+              />
+            </Form.Item>
+            <Form.Item label="Estado" name="estado" initialValue="Activo">
+              <Select options={[{value:'Activo',label:'Activo'},{value:'Inactivo',label:'Inactivo'}]} />
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        {/* ===== Modal Eliminar ===== */}
+        <Modal visible={deleteOpen} onCancel={()=>{setDeleteOpen(false); setToDelete(null);}}
+               title="Confirmar eliminación" okType="danger" okText="Eliminar"
+               onOk={confirmarEliminar} confirmLoading={loading}>
+          <p>¿Seguro que deseas eliminar el servicio <b>{toDelete ? (toDelete.nombre_servicio || ('ID ' + toDelete.id_servicios)) : ''}</b>?</p>
+          <p>Esta acción no se puede deshacer.</p>
+        </Modal>
+      </Card>
+    </div>
   );
 }
 // </script>

@@ -1,6 +1,6 @@
 // <script type="text/jsx">
 function Sucursales() {
-  const { useState, useEffect } = React;
+  const { useState, useEffect, useRef } = React; // ← NUEVO useRef para animación KPI
   const { Table, Card, Button, Modal, Form, Input, Select, Space, Row, Col, Divider, message, Tag } = antd;
 
   // ===== Estado =====
@@ -56,7 +56,7 @@ function Sucursales() {
         setLoading(false);
         Modal.error({ title:'Error de servidor', content: String((err && err.message) || err) });
       })
-      .listarSucursales();
+      .sucursales_listar();                    // ← antes: .listarSucursales()
   }
   useEffect(function(){ cargar(); }, []);
 
@@ -96,7 +96,7 @@ function Sucursales() {
           }catch(e){ Modal.error({ title:'Error', content:'Respuesta inválida del servidor.' }); }
         })
         .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content: String((err && err.message) || err) }); })
-        .crearSucursal(payload);
+        .sucursales_crear(payload);            // ← antes: .crearSucursal(...)
     } else {
       google.script.run
         .withSuccessHandler(function(res){
@@ -108,7 +108,7 @@ function Sucursales() {
           }catch(e){ Modal.error({ title:'Error', content:'Respuesta inválida del servidor.' }); }
         })
         .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content: String((err && err.message) || err) }); })
-        .actualizarSucursal(payload);
+        .sucursales_actualizar(payload);       // ← antes: .actualizarSucursal(...)
     }
   }
 
@@ -126,7 +126,7 @@ function Sucursales() {
         }catch(e){ Modal.error({ title:'Error', content:'Respuesta inválida del servidor.' }); }
       })
       .withFailureHandler(function(err){ setLoading(false); Modal.error({ title:'Error de servidor', content: String((err && err.message) || err) }); })
-      .eliminarSucursal(toDelete.id);
+      .sucursales_eliminar(toDelete.id);       // ← antes: .eliminarSucursal(...)
   }
 
   // ===== Columnas (sin ID, Dirección ancha, Acciones compactas) =====
@@ -175,7 +175,6 @@ function Sucursales() {
       key:'estado',
       width:110,
       render: (s) => <span className="ant-tag" style={{background:'#f6ffed', borderColor:'#b7eb8f', color:'#389e0d'}}>{s || ''}</span>
-      // (si ya usas <Tag/> de AntD con estilos, puedes reemplazar por <Tag color="green">{s}</Tag>)
     },
     {
       title:'',
@@ -192,10 +191,56 @@ function Sucursales() {
     }
   ];
 
+  // ======== NUEVO: KPIs simples (no afectan sidebar) ========
+  function edadEnDias(d){
+    var dt = parseFechaFlexible(d); if (!dt) return null;
+    var ms = Date.now() - dt.getTime(); return Math.max(0, Math.floor(ms/86400000));
+  }
+  function promedio(arr){
+    if (!arr.length) return 0;
+    return arr.reduce((a,b)=>a+(b||0),0)/arr.length;
+  }
+  const total = data.length;
+  const activas = data.filter(r => String(r.estado||'')==='Activo').length;
+  const inactivas = data.filter(r => String(r.estado||'')==='Inactivo').length;
+  const edades = data.map(r=>edadEnDias(r.fechaInauguracion)).filter(x=>x!=null);
+  const antiguedadPromAnos = edades.length ? (promedio(edades)/365).toFixed(1) : 0;
+
+  // KPI animadito (autónomo y seguro)
+  function useCountUp(value, duration=700){
+    const [display, setDisplay] = useState(0);
+    const prevRef = useRef(0);
+    useEffect(()=>{
+      const start = performance.now();
+      const from = prevRef.current;
+      const to = Number(value||0);
+      let raf;
+      function tick(t){
+        const p = Math.min(1, (t - start)/duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setDisplay(from + (to - from) * eased);
+        if (p < 1) raf = requestAnimationFrame(tick);
+      }
+      raf = requestAnimationFrame(tick);
+      prevRef.current = to;
+      return ()=> cancelAnimationFrame(raf);
+    }, [value, duration]);
+    return display;
+  }
+  function KPI({ title, value, suffix }){
+    const v = useCountUp(value);
+    return (
+      <Card bodyStyle={{ padding: 14 }} className="suc-kpi">
+        <div className="suc-kpi-sub">{title}</div>
+        <div className="suc-kpi-val">{Math.round(Number(v))}{suffix||''}</div>
+      </Card>
+    );
+  }
+
   return (
     <div className="sucursales-wrap">
       <Card
-        title="Sucursales"
+        title={<div className="suc-hero-title"><span className="suc-spark"></span>Sucursales</div>}
         extra={
           <Space>
             <Button onClick={cargar} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
@@ -203,16 +248,59 @@ function Sucursales() {
           </Space>
         }
       >
-        <Table
-          className="sucursales-table"
-          dataSource={data}
-          columns={columns}
-          loading={loading}
-          pagination={false}       // ← sin paginación
-          rowKey={(r)=> (r && r.id != null) ? r.id : r.key}
-          tableLayout="auto"
-          scroll={{ x: true }}
-        />
+        {/* ======== ESTILOS SCOPEADOS (no tocan el sidebar) ======== */}
+        <style>{`
+          .sucursales-wrap * { box-sizing: border-box; }
+          .suc-hero-title{ position:relative; padding-left:12px; font-weight:800; }
+          .suc-spark{
+            position:absolute; left:0; top:6px; width:6px; height:22px; border-radius:3px;
+            background: linear-gradient(180deg,#60a5fa,#a78bfa,#34d399);
+            animation: sucSpark 2.6s ease-in-out infinite;
+          }
+          @keyframes sucSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
+
+          /* KPIs */
+          .suc-kpi{ border-radius:14px; background: linear-gradient(135deg,#e0eaff,#e9fff6); box-shadow: 0 2px 10px rgba(15,23,42,.06); }
+          .suc-kpi-sub{ font-size:12px; color:#6b7280 }
+          .suc-kpi-val{ font-size:26px; font-weight:800; color:#0f172a }
+
+          /* Centrar tabla y darle “card feel” */
+          .sucursales-wrap .tbl-center{ max-width: 1200px; margin: 0 auto; }
+          .sucursales-wrap .sucursales-table .ant-table{ border-radius:14px; overflow:hidden; }
+          .sucursales-wrap .sucursales-table .ant-table-thead > tr > th{
+            background:#f8fafc !important; border-bottom:0; color:#334155; font-weight:700;
+          }
+          .sucursales-wrap .sucursales-table .ant-table-tbody > tr{
+            transition: transform .15s ease, box-shadow .15s ease, background .2s;
+            animation: sucFadeUp .35s ease both;
+          }
+          @keyframes sucFadeUp{ from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:translateY(0) } }
+          .sucursales-wrap .sucursales-table .ant-table-tbody > tr:hover{
+            transform: scale(1.01); box-shadow: 0 10px 24px rgba(2,6,23,.08);
+          }
+          .sucursales-wrap .sucursales-table .ant-table-tbody > tr:nth-child(odd) td{ background:#fcfdff; }
+        `}</style>
+
+        {/* ======== DASHBOARDS (no afectan lógica) ======== */}
+        <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+          <Col xs={24} sm={8}><KPI title="Antigüedad promedio" value={antiguedadPromAnos} suffix=" años" /></Col>
+          <Col xs={24} sm={8}><KPI title="Activas" value={activas} /></Col>
+          <Col xs={24} sm={8}><KPI title="Inactivas" value={inactivas} /></Col>
+        </Row>
+
+        {/* ======== TABLA (SIN CAMBIOS FUNCIONALES) ======== */}
+        <div className="tbl-center">
+          <Table
+            className="sucursales-table"
+            dataSource={data}
+            columns={columns}
+            loading={loading}
+            pagination={false}
+            rowKey={(r)=> (r && r.id != null) ? r.id : r.key}
+            tableLayout="auto"
+            scroll={{ x: true }}
+          />
+        </div>
 
         {/* Modal Crear/Editar */}
         <Modal

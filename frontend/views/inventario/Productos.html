@@ -1,7 +1,7 @@
 //<script type="text/jsx">
 function Productos() {
-  const { useState, useEffect } = React;
-  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, message, Row, Col, Divider } = antd;
+  const { useState, useEffect, useMemo, useRef } = React;
+  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, message, Row, Col, Divider, Tooltip, Tag, Collapse } = antd;
 
   // ===== Estado general =====
   const [data, setData] = useState([]);
@@ -29,11 +29,13 @@ function Productos() {
   const [fStockMin, setFStockMin] = useState(null);
   const [fStockMax, setFStockMax] = useState(null);
 
-  // ===== PAGINACIÓN (Load more) =====
-  const [batchSize, setBatchSize] = useState(10);     // tamaño de lote
-  const [visibleCount, setVisibleCount] = useState(10); // cuánto se muestra
+  // Umbral stock bajo para dashboard
+  const [lowThreshold, setLowThreshold] = useState(5);
 
-  // Cuando cambian los filtros o llega nueva data, reiniciamos el conteo visible al tamaño de lote
+  // ===== PAGINACIÓN (Load more) =====
+  const [batchSize, setBatchSize] = useState(10);
+  const [visibleCount, setVisibleCount] = useState(10);
+
   useEffect(function(){
     setVisibleCount(batchSize);
   }, [q, fSucursal, fDesde, fHasta, fPrecioMin, fPrecioMax, fStockMin, fStockMax, data, batchSize]);
@@ -89,12 +91,14 @@ function Productos() {
     return y + '-' + m + '-' + day;
   }
   function parseInputDate(v) {
-    // v: yyyy-mm-dd -> Date o null
     if (!v) return null;
     var m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return null;
     return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   }
+
+  // --------- Paleta & estilos suaves ---------
+  const PALETTE = ['#7FB3FF','#9FD3FF','#B8E1C6','#FFD6A5','#F9A8D4','#C3B8FF','#BDE0FE','#CFF5E7','#FFE3B3','#D0BCFF','#B0BEC5','#C6E2FF'];
 
   // ===== Data productos =====
   function cargar() {
@@ -126,21 +130,24 @@ function Productos() {
       .withSuccessHandler(function (res) {
         try {
           var r = typeof res === 'string' ? JSON.parse(res) : res;
-          if (r && r.ok && r.sucursales) setSucursales(r.sucursales);
-          else setSucursales([]);
+          if (Array.isArray(r)) {
+            setSucursales(r);
+          } else if (r && r.ok && Array.isArray(r.sucursales)) {
+            setSucursales(r.sucursales);
+          } else {
+            setSucursales([]);
+          }
         } catch (e) { setSucursales([]); }
       })
       .withFailureHandler(function () { setSucursales([]); })
-      .listarSucursalesActivas();
+      .sucursales_listar_activas();
   }
 
-  // Inicial: productos + sucursales
   useEffect(function () {
     cargar();
     cargarSucursales();
   }, []);
 
-  // ¿Existe en opciones?
   function isInSucursalOptions(value) {
     for (var i = 0; i < sucursales.length; i++) {
       if (sucursales[i].nombreSucursal === value) return true;
@@ -278,33 +285,27 @@ function Productos() {
     var sMax = fStockMax != null ? Number(fStockMax) : null;
 
     return (arr || []).filter(function (r) {
-      // Buscar
       if (qnorm) {
         var t1 = (r.nombreProducto || '').toString().toLowerCase();
         var t2 = (r.descripcion || '').toString().toLowerCase();
         if (t1.indexOf(qnorm) === -1 && t2.indexOf(qnorm) === -1) return false;
       }
-      // Sucursal
       if (fSucursal && r.nombreSucursal !== fSucursal) return false;
 
-      // Fecha dentro de [desde, hasta]
       if (fDesde || fHasta) {
         var d = parseFechaFlexible(r.fechaEntrada);
         if (!d) return false;
         if (dFrom && d.getTime() < dFrom.getTime()) return false;
         if (dTo) {
-          // incluir el día completo "hasta"
           var dToEnd = new Date(dTo.getFullYear(), dTo.getMonth(), dTo.getDate(), 23, 59, 59, 999);
           if (d.getTime() > dToEnd.getTime()) return false;
         }
       }
 
-      // Precio
       var precio = Number(r.precio || 0);
       if (pMin != null && precio < pMin) return false;
       if (pMax != null && precio > pMax) return false;
 
-      // Stock
       var stock = Number(r.stock || 0);
       if (sMin != null && stock < sMin) return false;
       if (sMax != null && stock > sMax) return false;
@@ -315,37 +316,17 @@ function Productos() {
 
   var filtered = applyFilters(data);
 
-  // ====== KPIs ======
+  // ====== KPIs base ======
   function sumBy(arr, selector) {
     var s = 0;
     for (var i = 0; i < arr.length; i++) s += Number(selector(arr[i]) || 0);
     return s;
   }
-  var totalProductos = filtered.length;
-  var totalStock = sumBy(filtered, function (r) { return r.stock; });
+  var totalProductos = filtered.length; // número de productos
+  var totalStock = sumBy(filtered, function (r) { return r.stock; }); // total unidades
   var valorInventario = sumBy(filtered, function (r) { return Number(r.precio || 0) * Number(r.stock || 0); });
 
-  // ====== PAGINACIÓN Load More: recorte de datos ======
-  var total = filtered.length;
-  var canLoadMore = visibleCount < total;
-  var paged = filtered.slice(0, visibleCount);
-
-  function loadMore() {
-    var next = visibleCount + batchSize;
-    if (next > total) next = total;
-    setVisibleCount(next);
-  }
-  function showAll() {
-    setVisibleCount(total);
-  }
-  function onBatchChange(value) {
-    // value es 10,20,50,100
-    setBatchSize(Number(value));
-    // visibleCount se reajusta por el useEffect de arriba
-  }
-
   // ===== Columnas =====
-  // CABECERAS MODIFICADAS: 'ID' -> 'No.' Y 'Precio' -> 'Precio Unitario'
   const columns = [
     { title: 'No.', dataIndex: 'id', key: 'id', width: 70,
       sorter: function(a,b){ return String(a.id).localeCompare(String(b.id)); } },
@@ -384,352 +365,640 @@ function Productos() {
     }
   ];
 
-  // Opciones para Select (no editable)
-  var sucOptions = sucursales.map(function (s) {
-    return { value: s.nombreSucursal, label: s.nombreSucursal };
-  });
-
-  // ===== Reset filtros =====
-  function resetFiltros() {
-    setQ('');
-    setFSucursal(undefined);
-    setFDesde('');
-    setFHasta('');
-    setFPrecioMin(null);
-    setFPrecioMax(null);
-    setFStockMin(null);
-    setFStockMax(null);
+  // --------- DASHBOARDS (sobre "filtered") ---------
+  function useCountUp(value, duration=800){
+    const [display, setDisplay] = useState(0);
+    const prevRef = useRef(0);
+    useEffect(()=>{
+      const start = performance.now();
+      const from = prevRef.current;
+      const to = Number(value||0);
+      let raf;
+      function tick(t){
+        const p = Math.min(1, (t - start)/duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setDisplay(from + (to - from) * eased);
+        if (p < 1) raf = requestAnimationFrame(tick);
+      }
+      raf = requestAnimationFrame(tick);
+      prevRef.current = to;
+      return ()=> cancelAnimationFrame(raf);
+    }, [value, duration]);
+    return display;
   }
 
-  return (
-    <Card
-      title="Productos"
-      extra={
-        <Space>
-          <Button onClick={cargar} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
-          <Button type="primary" onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Nuevo</Button>
-        </Space>
-      }
-    >
-      {/* KPIs */}
-      <Row gutter={[12, 12]}>
-        <Col xs={24} md={8}>
-          <Card size="small">
-            <b>Total productos:</b> {totalProductos}
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card size="small">
-            <b>Stock total:</b> {totalStock}
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card size="small">
-            <b>Valor inventario:</b> {formatHNL(valorInventario)}
-          </Card>
-        </Col>
-      </Row>
+  // ——— Ajuste visual al estilo Sucursales (mantengo tus íconos/emojis tal cual) ———
+  function KPI({ title, value, formatter, icon, accent='#EEF2FF' }){
+    const v = useCountUp(value);
+    return (
+      <Card className="fade-in prd-kpi" bodyStyle={{ padding: 14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ width:38, height:38, borderRadius:12, background:accent, display:'grid', placeItems:'center' }}>
+            {icon}
+          </div>
+          <div style={{ flex:1 }}>
+            <div className="prd-kpi-sub">{title}</div>
+            <div className="prd-kpi-val">{formatter ? formatter(v) : v.toFixed(0)}</div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
-      <Divider style={{ margin: '12px 0' }} />
+  function formatPercent(v, total){
+    const t = Number(total) || 0;
+    if (t <= 0) return '0%';
+    return Math.round((Number(v||0)*100)/t) + '%';
+  }
 
-      {/* Filtros */}
-      <Row gutter={[12, 12]} align="bottom">
-        <Col xs={24} md={8}>
-          <label style={{ display: 'block', marginBottom: 4 }}>Buscar (nombre o descripción)</label>
-          <Input
-            allowClear
-            placeholder="Buscar..."
-            value={q}
-            onChange={function(e){ setQ(e.target.value); }}
-            prefix={<icons.FilterOutlined />}
-          />
-        </Col>
-
-        <Col xs={24} md={8}>
-          <label style={{ display: 'block', marginBottom: 4 }}>Sucursal</label>
-          <Select
-            options={sucOptions}
-            showSearch={false}
-            allowClear
-            placeholder="Todas"
-            value={fSucursal}
-            onChange={function(v){ setFSucursal(v); }}
-            style={{ width: '100%' }}
-          />
-        </Col>
-
-        <Col xs={12} md={4}>
-          <label style={{ display: 'block', marginBottom: 4 }}>Desde</label>
-          <Input type="date" value={fDesde} onChange={function(e){ setFDesde(e.target.value); }} />
-        </Col>
-        <Col xs={12} md={4}>
-          <label style={{ display: 'block', marginBottom: 4 }}>Hasta</label>
-          <Input type="date" value={fHasta} onChange={function(e){ setFHasta(e.target.value); }} />
-        </Col>
-
-        <Col xs={12} md={4}>
-          <label style={{ display: 'block', marginBottom: 4 }}>Precio min</label>
-          <InputNumber
-            min={0} step={0.01} style={{ width: '100%' }}
-            value={fPrecioMin}
-            onChange={function(v){ setFPrecioMin(v); }}
-          />
-        </Col>
-        <Col xs={12} md={4}>
-          <label style={{ display: 'block', marginBottom: 4 }}>Precio max</label>
-          <InputNumber
-            min={0} step={0.01} style={{ width: '100%' }}
-            value={fPrecioMax}
-            onChange={function(v){ setFPrecioMax(v); }}
-          />
-        </Col>
-
-        <Col xs={12} md={4}>
-          <label style={{ display: 'block', marginBottom: 4 }}>Stock min</label>
-          <InputNumber
-            min={0} step={1} style={{ width: '100%' }}
-            value={fStockMin}
-            onChange={function(v){ setFStockMin(v); }}
-          />
-        </Col>
-        <Col xs={12} md={4}>
-          <label style={{ display: 'block', marginBottom: 4 }}>Stock max</label>
-          <InputNumber
-            min={0} step={1} style={{ width: '100%' }}
-            value={fStockMax}
-            onChange={function(v){ setFStockMax(v); }}
-          />
-        </Col>
-
-        <Col xs={24} md={8}>
-          <Space wrap>
-            <Button onClick={resetFiltros}>Limpiar filtros</Button>
-            <Button type="default" icon={<icons.DownloadOutlined />} onClick={function(){
-              // Export CSV (usa 'filtered' completo, no 'paged')
-              var headers = ['id','nombreProducto','precio','stock','fechaEntrada','descripcion','nombreSucursal'];
-              var rows = filtered.map(function(r){
-                var d = parseFechaFlexible(r.fechaEntrada);
-                var fecha = d ? formatYMD(d) : '';
-                function esc(x){
-                  var s = (x == null ? '' : String(x));
-                  if (s.indexOf('"') >= 0 || s.indexOf(',') >= 0 || s.indexOf('\n') >= 0) {
-                    s = '"' + s.replace(/"/g, '""') + '"';
-                  }
-                  return s;
-                }
-                return [
-                  esc(r.id),
-                  esc(r.nombreProducto),
-                  esc(Number(r.precio || 0).toFixed(2)),
-                  esc(r.stock),
-                  esc(fecha),
-                  esc(r.descripcion),
-                  esc(r.nombreSucursal)
-                ].join(',');
-              });
-              var csv = headers.join(',') + '\n' + rows.join('\n');
-              var blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
-              var url = URL.createObjectURL(blob);
-              var a = document.createElement('a');
-              a.href = url; a.download = 'productos_filtrados.csv';
-              document.body.appendChild(a); a.click();
-              document.body.removeChild(a); URL.revokeObjectURL(url);
-            }}>
-              Exportar CSV (filtrado)
-            </Button>
-          </Space>
-        </Col>
-      </Row>
-
-      <Divider style={{ margin: '12px 0' }} />
-
-      {/* TABLA CON PAGINACIÓN NATIVA (MANTENIDO) */}
-      <Table
-        dataSource={filtered}
-        columns={columns}
-        loading={loading}
-        pagination={{ pageSize: 10 }}
-        rowKey={function(r){ return (r && r.id != null) ? r.id : r.key; }}
-        scroll={{ x: true }}
-      />
-
-      {/* CONTROLES "LOAD MORE" (LEGADO) OCULTOS PARA EVITAR DOBLE PAGINACIÓN */}
-      <div style={{ display:'none', alignItems:'center', gap:12, flexWrap:'wrap', marginTop:12 }}>
-        <span style={{ opacity: .8 }}>
-          Mostrando <b>{paged.length}</b> de <b>{total}</b>
-        </span>
-
-        <Select
-          value={String(batchSize)}
-          onChange={onBatchChange}
-          style={{ width: 140 }}
-          options={[
-            { value: '10', label: 'Lote: 10' },
-            { value: '20', label: 'Lote: 20' },
-            { value: '50', label: 'Lote: 50' },
-            { value: '100', label: 'Lote: 100' }
-          ]}
-        />
-
-        <Space wrap>
-          <Button onClick={loadMore} disabled={!canLoadMore}>Cargar más</Button>
-          <Button onClick={showAll} disabled={!canLoadMore}>Mostrar todo</Button>
-          <Button onClick={function(){ window.scrollTo({ top: 0, behavior: 'smooth' }); }}>
-            Ir arriba
-          </Button>
-        </Space>
-      </div>
-
-      {/* Modal Crear/Editar */}
-    <Modal
-    centered
-    title={
-        <Space>
-        {modalMode === 'create' ? <icons.PlusOutlined /> : <icons.EditOutlined />}
-        <span>{modalMode === 'create' ? 'Nuevo Producto' : 'Editar Producto'}</span>
-        </Space>
+  // --- Donut (modo pastel) ---
+  function DonutChart({ data, total, onSelect, title }){
+    if (!data || data.length === 0 || total <= 0){
+      return <Card bodyStyle={{padding:14}}><div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos</div></Card>;
     }
-    open={modalOpen} visible={modalOpen}
-    maskClosable={false}
-    keyboard={false}
-    destroyOnClose
-    confirmLoading={loading}
-    okText={modalMode === 'create' ? 'Crear' : 'Guardar'}
-    cancelText="Cancelar"
-    onCancel={function(){ setModalOpen(false); }}
-    onOk={function(){ form.submit(); }}
-    afterOpenChange={function(open){
-        if(open){
-        setTimeout(function(){
-            var el = document.getElementById('nombreProductoInput');
-            if(el) el.focus();
-        }, 50);
+    const cx = 75, cy = 75, r = 50, strokeW = 18;
+    let startAngle = 0;
+    const slices = data.map((d)=>{
+      const angle = (d.value/total) * 360;
+      const endAngle = startAngle + angle;
+      const out = { ...d, start: startAngle, end: endAngle };
+      startAngle = endAngle;
+      return out;
+    });
+    function polar(cx, cy, r, ang){
+      const rad = (ang - 90) * Math.PI/180;
+      return { x: cx + r*Math.cos(rad), y: cy + r*Math.sin(rad) };
+    }
+    function arcPath(cx, cy, r, start, end){
+      const s = polar(cx, cy, r, start);
+      const e = polar(cx, cy, r, end);
+      const large = (end - start) > 180 ? 1 : 0;
+      return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
+    }
+    return (
+      <Card title={<Space><icons.PieChartOutlined /> <span>{title}</span></Space>}
+            extra={fSucursal ? <Tag color="blue" onClick={()=>setFSucursal(undefined)} style={{cursor:'pointer'}}>Quitar filtro</Tag> : null}
+            bodyStyle={{ padding: 12 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'160px 1fr', gap:12, alignItems:'center' }}>
+          <svg width={160} height={160} viewBox="0 0 150 150" className="fade-in">
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke="#F1F5F9" strokeWidth={strokeW} />
+            {slices.map((s,i)=>(
+              <path key={i}
+                d={arcPath(cx,cy,r,s.start,s.end)}
+                stroke={s.color}
+                strokeWidth={strokeW}
+                fill="none"
+                style={{ cursor:'pointer', transition:'opacity .2s ease' }}
+                onClick={()=> onSelect && s.label !== 'Otros' && onSelect(s.label)}
+                onMouseEnter={e=> e.currentTarget.style.opacity = 0.85}
+                onMouseLeave={e=> e.currentTarget.style.opacity = 1}
+              />
+            ))}
+            <circle cx={cx} cy={cy} r={r- strokeW/2 - 4} fill="#FFFFFF"/>
+            <text x={cx} y={cy-4} textAnchor="middle" style={{fontSize:12, fill:'#64748B'}}>Valor total</text>
+            <text x={cx} y={cy+14} textAnchor="middle" style={{fontSize:14, fontWeight:700}}>{formatHNL(total)}</text>
+          </svg>
+          <div style={{ display:'grid', gap:6 }}>
+            {data.map((d,i)=>(
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ width:10, height:10, borderRadius:3, background:d.color }} />
+                <div style={{ flex:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                  <Tooltip title="Filtrar por sucursal">
+                    <a onClick={()=> onSelect && d.label !== 'Otros' && onSelect(d.label)}>{d.label}</a>
+                  </Tooltip>
+                </div>
+                <div style={{ width:100, textAlign:'right', color:'#475569' }}>{formatHNL(d.value)}</div>
+                <div style={{ width:48, textAlign:'right', color:'#64748B' }}>{formatPercent(d.value, total)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  // --- Lista de barras (Top productos por valor) ---
+  function BarList({ data, onSelect, title, hint='Filtrar', icon }){
+    const max = data.reduce((a,b)=> Math.max(a, Number(b.value||0)), 0) || 1;
+    return (
+      <Card title={<Space>{icon}{title}</Space>} bodyStyle={{ padding: 12 }}>
+        <div className="fade-in" style={{ display:'grid', gap:8 }}>
+          {data.length === 0 ? <div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos</div> : null}
+          {data.map((d,i)=>(
+            <div key={i} style={{ display:'grid', gridTemplateColumns:'auto 100px', gap:10, alignItems:'center' }}>
+              <div style={{ display:'grid', gridTemplateColumns:'16px 1fr', gap:8, alignItems:'center' }}>
+                <span style={{ width:10, height:10, borderRadius:3, background:d.color }} />
+                <div style={{ position:'relative' }}>
+                  <div style={{ fontSize:12, color:'#334155', marginBottom:4, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                    <Tooltip title={d.label}><a onClick={()=> onSelect && onSelect(d.label)}>{d.label}</a></Tooltip>
+                  </div>
+                  <Tooltip title={hint}>
+                    <div onClick={()=> onSelect && onSelect(d.label)}
+                         style={{ height:8, background:'#F1F5F9', borderRadius:999, cursor:'pointer' }}>
+                      <div className="bar" style={{
+                        width: (Math.max(3,(d.value/max)*100)).toFixed(2)+'%',
+                        height:'100%',
+                        borderRadius:999,
+                        background:`linear-gradient(90deg, ${d.color} 0%, ${d.color}CC 100%)`,
+                        transition:'width .8s ease'
+                      }} />
+                    </div>
+                  </Tooltip>
+                </div>
+              </div>
+              <div style={{ textAlign:'right', fontWeight:600 }}>{formatHNL(d.value)}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    );
+  }
+
+  // --- Sparkline (gráfica temporal) ---
+  function Sparkline({ data, days }){
+    const W = 340, H = 90, pad = 8;
+    const maxY = data.reduce((a,b)=>Math.max(a, b.y), 0) || 1;
+    const stepX = (W - pad*2) / Math.max(1, days - 1);
+    const scaleY = v => (H - pad) - ( (Number(v)/maxY) * (H - pad*2) );
+    const points = data.map((d,i)=> [pad + i*stepX, scaleY(d.y)] );
+    const path = points.map((p,i)=> (i===0? 'M':'L') + p[0].toFixed(2)+' '+p[1].toFixed(2)).join(' ');
+    return (
+      <Card title={<Space><icons.AreaChartOutlined /> Entradas (valor) en el tiempo</Space>} bodyStyle={{padding:12}}>
+        {data.length === 0 ? <div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos</div> : (
+          <svg width={W} height={H} className="fade-in">
+            <path d={path} fill="none" stroke="#7FB3FF" strokeWidth="2" />
+            <path d={`${path} L ${pad + (days-1)*stepX} ${H-pad} L ${pad} ${H-pad} Z`} fill="#7FB3FF22" />
+            {points.map((p,i)=>( <circle key={i} cx={p[0]} cy={p[1]} r="2" fill="#7FB3FF" /> ))}
+          </svg>
+        )}
+        <div style={{ fontSize:12, color:'#64748B', marginTop:6 }}>
+          {days} días · Máximo diario {formatHNL(maxY)}
+        </div>
+      </Card>
+    );
+  }
+
+  // --- Cálculos para los dashboards ---
+  const {
+    valorPorSucursal, donutSucursal,
+    topProductosValor,
+    lowStockItems, lowStockCount,
+    entradasSeries, entradasDias
+  } = useMemo(() => {
+    const items = Array.isArray(filtered) ? filtered : [];
+    const bySuc = {};
+    items.forEach(r=>{
+      const suc = r.nombreSucursal || 'Sin sucursal';
+      const val = Number(r.precio||0) * Number(r.stock||0);
+      bySuc[suc] = (bySuc[suc] || 0) + val;
+    });
+    const valorPorSucursal = bySuc;
+
+    const entriesSuc = Object.entries(bySuc).sort((a,b)=>b[1]-a[1]);
+    let donutSucursal = entriesSuc.slice(0,6).map(([label,value],i)=>({ label, value, color: PALETTE[i % PALETTE.length] }));
+    if (entriesSuc.length > 6) {
+      const otros = entriesSuc.slice(6).reduce((acc, [,v]) => acc+v, 0);
+      donutSucursal.push({ label: 'Otros', value: otros, color: '#E5E7EB' });
+    }
+
+    const topProductosValor = items
+      .map(r => ({ rec: r, label: r.nombreProducto || ('ID '+r.id), value: Number(r.precio||0)*Number(r.stock||0) }))
+      .sort((a,b)=> b.value - a.value)
+      .slice(0,8)
+      .map((d,i)=> ({ ...d, color: PALETTE[i % PALETTE.length] }));
+
+    const lowStockItems = items
+      .filter(r => Number(r.stock||0) <= Number(lowThreshold||0))
+      .sort((a,b)=> Number(a.stock||0) - Number(b.stock||0))
+      .slice(0,6);
+    const lowStockCount = items.filter(r => Number(r.stock||0) <= Number(lowThreshold||0)).length;
+
+    let start, end;
+    const today = new Date(); today.setHours(0,0,0,0);
+    if (fDesde || fHasta) {
+      start = parseInputDate(fDesde) || new Date(today.getFullYear(), today.getMonth(), today.getDate()-29);
+      end = parseInputDate(fHasta) || today;
+    } else {
+      end = today;
+      start = new Date(today.getFullYear(), today.getMonth(), today.getDate()-29);
+    }
+    start.setHours(0,0,0,0); end.setHours(0,0,0,0);
+    const dayMs = 24*60*60*1000;
+    const len = Math.max(1, Math.floor((end - start)/dayMs) + 1);
+    const daily = new Array(len).fill(0);
+    items.forEach(r=>{
+      const d = parseFechaFlexible(r.fechaEntrada);
+      if (!d) return;
+      const dd = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      if (dd >= start && dd <= end) {
+        const idx = Math.floor((dd - start)/dayMs);
+        daily[idx] += Number(r.precio||0) * Number(r.stock||0);
+      }
+    });
+    const entradasSeries = daily.map((v,idx)=>({ x: idx+1, y: v }));
+    const entradasDias = len;
+
+    return { valorPorSucursal, donutSucursal, topProductosValor, lowStockItems, lowStockCount, entradasSeries, entradasDias };
+  }, [filtered, fDesde, fHasta, lowThreshold]);
+
+  // ====== Render ======
+  return (
+    <div className="productos-wrap">
+      <Card
+        title={<div className="prd-hero-title"><span className="prd-spark"></span>Productos</div>}
+        extra={
+          <Space>
+            <Button onClick={cargar} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
+            <Button type="primary" onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Nuevo</Button>
+          </Space>
         }
-    }}
-    >
-    <Form form={form} layout="vertical" onFinish={onSubmit}>
-        <Form.Item name="id" style={{ display: 'none' }}>
-        <Input />
-        </Form.Item>
+      >
+        <style>{`
+          .fade-in { animation: fadeIn .45s ease; }
+          @keyframes fadeIn { from { opacity:.0; transform: scale(.98) } to { opacity:1; transform: scale(1) } }
+          .bar { will-change: width; }
 
-        <Form.Item label="Nombre" name="nombreProducto"
-        rules={[{ required: true, message: 'Ingrese el nombre del producto' }]}>
-        <Input id="nombreProductoInput" placeholder="Ej. Shampoo" autoComplete="off" />
-        </Form.Item>
+          /* Título animado (como Sucursales) */
+          .prd-hero-title{ position:relative; padding-left:12px; font-weight:800; }
+          .prd-spark{
+            position:absolute; left:0; top:6px; width:6px; height:22px; border-radius:3px;
+            background: linear-gradient(180deg,#60a5fa,#a78bfa,#34d399);
+            animation: prdSpark 2.6s ease-in-out infinite;
+          }
+          @keyframes prdSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
 
-        {/* CAMBIO: ETIQUETA Y PLACEHOLDER A "PRECIO UNITARIO" */}
-        <Form.Item
-          label="Precio Unitario (L.)"
-          name="precio"
-          rules={[
-            { required: true, message: 'Ingrese el precio unitario' },
-            {
-              // VALIDACIÓN: SOLO NÚMEROS Y NO NEGATIVO
-              validator: function(_, value) {
-                if (value === undefined || value === null || value === '') return Promise.resolve();
-                if (typeof value !== 'number' || isNaN(value)) return Promise.reject('SOLO NÚMEROS');
-                if (value < 0) return Promise.reject('EL PRECIO NO PUEDE SER NEGATIVO');
-                return Promise.resolve();
-              }
-            }
-          ]}
-        >
-          <InputNumber
-            min={0}
-            step={0.01}
-            precision={2}
-            style={{ width: '100%' }}
-            placeholder="Ej. 100.00 – Precio Unitario"
-          />
-        </Form.Item>
+          /* KPIs estilo “tiles” (igual que Sucursales/Servicios) */
+          .prd-kpi{ border-radius:14px; background: linear-gradient(135deg,#e0eaff,#e9fff6); box-shadow: 0 2px 10px rgba(15,23,42,.06); }
+          .prd-kpi-sub{ font-size:12px; color:#6b7280 }
+          .prd-kpi-val{ font-size:22px; font-weight:800; color:#0f172a }
 
-        <Form.Item
-          label="Stock"
-          name="stock"
-          rules={[
-            { required: true, message: 'Ingrese el stock' },
-            {
-              // VALIDACIÓN: SOLO NÚMEROS, ENTERO Y NO NEGATIVO
-              validator: function(_, value) {
-                if (value === undefined || value === null || value === '') return Promise.resolve();
-                if (typeof value !== 'number' || isNaN(value)) return Promise.reject('SOLO NÚMEROS');
-                if (value < 0) return Promise.reject('EL STOCK NO PUEDE SER NEGATIVO');
-                if (!Number.isInteger(value)) return Promise.reject('EL STOCK DEBE SER UN NÚMERO ENTERO');
-                return Promise.resolve();
-              }
-            }
-          ]}
-        >
-          <InputNumber
-            min={0}
-            step={1}
-            precision={0}  // SOLO ENTEROS
-            style={{ width: '100%' }}
-            placeholder="Ej. 10"
-          />
-        </Form.Item>
+          /* Tabla pastel + hover sutil (alineado con Sucursales) */
+          .productos-wrap .prd-table .ant-table{ border-radius:14px; overflow:hidden; }
+          .productos-wrap .prd-table .ant-table-thead > tr > th{
+            background:#f8fafc !important; border-bottom:0; color:#334155; font-weight:700;
+          }
+          .productos-wrap .prd-table .ant-table-tbody > tr{
+            transition: transform .15s ease, box-shadow .15s ease, background .2s;
+            animation: prdFadeUp .35s ease both;
+          }
+          @keyframes prdFadeUp{ from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:translateY(0) } }
+          .productos-wrap .prd-table .ant-table-tbody > tr:hover{
+            transform: scale(1.01); box-shadow: 0 10px 24px rgba(2,6,23,.08);
+          }
+          .productos-wrap .prd-table .ant-table-tbody > tr:nth-child(odd) td{ background:#fcfdff; }
+        `}</style>
 
-        <Form.Item
-          label="Fecha de Entrada"
-          name="fechaEntrada"
-          rules={[
-            {
-              // VALIDACIÓN: FECHA NO MAYOR A HOY
-              validator: function(_, value) {
-                if (!value) return Promise.resolve();
-                var d = parseInputDate(value);
-                if (!d) return Promise.reject('FECHA INVÁLIDA');
-                var hoy = new Date();
-                hoy.setHours(23,59,59,999);
-                if (d.getTime() > hoy.getTime()) return Promise.reject('LA FECHA NO PUEDE SER MAYOR A HOY');
-                return Promise.resolve();
-              }
-            }
-          ]}
-        >
-          <Input type="date" />
-        </Form.Item>
+        {/* === DASHBOARDS ARRIBA (mantengo tus íconos/emojis) === */}
+        <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+          <Col xs={24} sm={8}>
+            <KPI
+              title="Total productos (unidades)"
+              value={totalStock}
+              icon={<icons.AppstoreOutlined />}
+              accent="#E6FFFB"
+            />
+          </Col>
+          <Col xs={24} sm={8}>
+            <KPI
+              title="Número de productos"
+              value={totalProductos}
+              icon={<icons.ShoppingCartOutlined />}
+              accent="#F1F5FF"
+            />
+          </Col>
+          <Col xs={24} sm={8}>
+            <KPI
+              title="Valor de inventario"
+              value={valorInventario}
+              formatter={formatHNL}
+              icon={<icons.DollarOutlined />}
+              accent="#FFF7ED"
+            />
+          </Col>
+        </Row>
 
-        <Form.Item label="Descripción" name="descripcion">
-        <Input.TextArea rows={3} placeholder="Detalles del producto" />
-        </Form.Item>
+        {/* === Dashboards adicionales === */}
+        <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+          <Col xs={24} md={12}>
+            <DonutChart
+              data={donutSucursal}
+              total={Object.values(valorPorSucursal).reduce((a,b)=>a+b,0)}
+              onSelect={(label)=> setFSucursal(label)}
+              title="Distribución del valor por sucursal"
+            />
+          </Col>
+          <Col xs={24} md={12}>
+            <BarList
+              data={topProductosValor}
+              onSelect={(label)=> setQ(label)}
+              title="Top productos por valor en inventario"
+              hint="Buscar producto"
+              icon={<icons.BarChartOutlined />}
+            />
+          </Col>
+        </Row>
 
-        {/* Select de sucursales - NO editable */}
-        <Form.Item label="Sucursal" name="nombreSucursal"
-        rules={[{ required: true, message: 'Seleccione una sucursal' }]}>
-        <Select
-            options={sucursales.map(function (s) { return { value: s.nombreSucursal, label: s.nombreSucursal }; })}
-            showSearch={false}
-            placeholder="Seleccione sucursal"
+        <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+          <Col xs={24} md={12}>
+            <Sparkline data={entradasSeries} days={entradasDias} />
+          </Col>
+          <Col xs={24} md={12}>
+            <Card title={<Space><icons.AlertOutlined /> Stock bajo</Space>} bodyStyle={{padding:12}}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+                <span style={{ fontSize:12, color:'#64748B' }}>Umbral:</span>
+                <InputNumber min={0} step={1} value={lowThreshold} onChange={setLowThreshold} />
+                <span style={{ fontSize:12, color:'#64748B' }}>productos ≤ umbral: <b>{lowStockCount}</b></span>
+              </div>
+              {lowStockItems.length === 0 ? <div style={{textAlign:'center', color:'#94A3B8'}}>Sin alertas</div> : (
+                <div style={{ display:'grid', gap:6 }}>
+                  {lowStockItems.map((r,i)=>(
+                    <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 70px 90px 90px auto', gap:8, alignItems:'center' }}>
+                      <div style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{r.nombreProducto || ('ID '+r.id)}</div>
+                      <div style={{ textAlign:'right' }}><Tag color="orange">Stock: {r.stock}</Tag></div>
+                      <div style={{ textAlign:'right', color:'#475569' }}>{formatHNL(r.precio)}</div>
+                      <div style={{ textAlign:'right', fontWeight:600 }}>{formatHNL(Number(r.precio||0)*Number(r.stock||0))}</div>
+                      <Button size="small" onClick={()=>abrirEditar(r)}>Revisar</Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </Col>
+        </Row>
+
+        {/* === COLLAPSE DE FILTROS – justo arriba de la tabla === */}
+        <Collapse defaultActiveKey={['filtros']} style={{ marginBottom: 8 }}>
+          <Collapse.Panel header={<Space><icons.FilterOutlined /> Filtros</Space>} key="filtros">
+            <Row gutter={[12, 12]} align="bottom">
+              <Col xs={24} md={8}>
+                <label style={{ display: 'block', marginBottom: 4 }}>Buscar (nombre o descripción)</label>
+                <Input
+                  allowClear
+                  placeholder="Buscar..."
+                  value={q}
+                  onChange={function(e){ setQ(e.target.value); }}
+                  prefix={<icons.FilterOutlined />}
+                />
+              </Col>
+
+              <Col xs={24} md={8}>
+                <label style={{ display: 'block', marginBottom: 4 }}>Sucursal</label>
+                <Select
+                  options={sucursales.map(function (s) { return { value: s.nombreSucursal, label: s.nombreSucursal }; })}
+                  showSearch={false}
+                  allowClear
+                  placeholder="Todas"
+                  value={fSucursal}
+                  onChange={function(v){ setFSucursal(v); }}
+                  style={{ width: '100%' }}
+                />
+              </Col>
+
+              <Col xs={12} md={4}>
+                <label style={{ display: 'block', marginBottom: 4 }}>Desde</label>
+                <Input type="date" value={fDesde} onChange={function(e){ setFDesde(e.target.value); }} />
+              </Col>
+              <Col xs={12} md={4}>
+                <label style={{ display: 'block', marginBottom: 4 }}>Hasta</label>
+                <Input type="date" value={fHasta} onChange={function(e){ setFHasta(e.target.value); }} />
+              </Col>
+
+              <Col xs={12} md={4}>
+                <label style={{ display: 'block', marginBottom: 4 }}>Precio min</label>
+                <InputNumber
+                  min={0} step={0.01} style={{ width: '100%' }}
+                  value={fPrecioMin}
+                  onChange={function(v){ setFPrecioMin(v); }}
+                />
+              </Col>
+              <Col xs={12} md={4}>
+                <label style={{ display: 'block', marginBottom: 4 }}>Precio max</label>
+                <InputNumber
+                  min={0} step={0.01} style={{ width: '100%' }}
+                  value={fPrecioMax}
+                  onChange={function(v){ setFPrecioMax(v); }}
+                />
+              </Col>
+
+              <Col xs={12} md={4}>
+                <label style={{ display: 'block', marginBottom: 4 }}>Stock min</label>
+                <InputNumber
+                  min={0} step={1} style={{ width: '100%' }}
+                  value={fStockMin}
+                  onChange={function(v){ setFStockMin(v); }}
+                />
+              </Col>
+              <Col xs={12} md={4}>
+                <label style={{ display: 'block', marginBottom: 4 }}>Stock max</label>
+                <InputNumber
+                  min={0} step={1} style={{ width: '100%' }}
+                  value={fStockMax}
+                  onChange={function(v){ setFStockMax(v); }}
+                />
+              </Col>
+
+              <Col xs={24} md={8}>
+                <Space wrap>
+                  <Button onClick={function(){
+                    setQ(''); setFSucursal(undefined);
+                    setFDesde(''); setFHasta('');
+                    setFPrecioMin(null); setFPrecioMax(null);
+                    setFStockMin(null); setFStockMax(null);
+                  }}>
+                    Limpiar filtros
+                  </Button>
+                  <Button type="default" icon={<icons.DownloadOutlined />} onClick={function(){
+                    var headers = ['id','nombreProducto','precio','stock','fechaEntrada','descripcion','nombreSucursal'];
+                    var rows = filtered.map(function(r){
+                      var d = parseFechaFlexible(r.fechaEntrada);
+                      var fecha = d ? formatYMD(d) : '';
+                      function esc(x){
+                        var s = (x == null ? '' : String(x));
+                        if (s.indexOf('"') >= 0 || s.indexOf(',') >= 0 || s.indexOf('\n') >= 0) {
+                          s = '"' + s.replace(/"/g, '""') + '"';
+                        }
+                        return s;
+                      }
+                      return [
+                        esc(r.id),
+                        esc(r.nombreProducto),
+                        esc(Number(r.precio || 0).toFixed(2)),
+                        esc(r.stock),
+                        esc(fecha),
+                        esc(r.descripcion),
+                        esc(r.nombreSucursal)
+                      ].join(',');
+                    });
+                    var csv = headers.join(',') + '\n' + rows.join('\n');
+                    var blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url; a.download = 'productos_filtrados.csv';
+                    document.body.appendChild(a); a.click();
+                    document.body.removeChild(a); URL.revokeObjectURL(url);
+                  }}>
+                    Exportar CSV (filtrado)
+                  </Button>
+                </Space>
+              </Col>
+            </Row>
+          </Collapse.Panel>
+        </Collapse>
+
+        {/* === TABLA === */}
+        <Table
+          className="prd-table"
+          dataSource={filtered}
+          columns={columns}
+          loading={loading}
+          pagination={{ pageSize: 10 }}
+          rowKey={function(r){ return (r && r.id != null) ? r.id : r.key; }}
+          scroll={{ x: true }}
         />
-        </Form.Item>
-    </Form>
-    </Modal>
 
+        {/* === Modales === */}
+        <Modal
+          centered
+          title={
+            <Space>
+              {modalMode === 'create' ? <icons.PlusOutlined /> : <icons.EditOutlined />}
+              <span>{modalMode === 'create' ? 'Nuevo Producto' : 'Editar Producto'}</span>
+            </Space>
+          }
+          open={modalOpen} visible={modalOpen}
+          maskClosable={false}
+          keyboard={false}
+          destroyOnClose
+          confirmLoading={loading}
+          okText={modalMode === 'create' ? 'Crear' : 'Guardar'}
+          cancelText="Cancelar"
+          onCancel={function(){ setModalOpen(false); }}
+          onOk={function(){ form.submit(); }}
+          afterOpenChange={function(open){
+            if(open){
+              setTimeout(function(){
+                var el = document.getElementById('nombreProductoInput');
+                if(el) el.focus();
+              }, 50);
+            }
+          }}
+        >
+          <Form form={form} layout="vertical" onFinish={onSubmit}>
+            <Form.Item name="id" style={{ display: 'none' }}>
+              <Input />
+            </Form.Item>
 
-      {/* Modal Eliminar */}
-    <Modal
-    centered
-    title="Eliminar Producto"
-    open={deleteOpen} visible={deleteOpen}
-    maskClosable={false}
-    keyboard={false}
-    destroyOnClose
-    confirmLoading={loading}
-    okText="Eliminar"
-    cancelText="Cancelar"
-    okButtonProps={{ danger: true }}
-    onCancel={function(){ setDeleteOpen(false); setToDelete(null); }}
-    onOk={confirmarEliminar}
-    >
-    <p>
-        ¿Seguro que deseas eliminar el producto{' '}
-        <b>{toDelete ? (toDelete.nombreProducto || ('ID ' + toDelete.id)) : ''}</b>?
-    </p>
-    <p>Esta acción no se puede deshacer.</p>
-    </Modal>
+            <Form.Item label="Nombre" name="nombreProducto"
+              rules={[{ required: true, message: 'Ingrese el nombre del producto' }]}>
+              <Input id="nombreProductoInput" placeholder="Ej. Shampoo" autoComplete="off" />
+            </Form.Item>
 
-    </Card>
+            <Form.Item
+              label="Precio Unitario (L.)"
+              name="precio"
+              rules={[
+                { required: true, message: 'Ingrese el precio unitario' },
+                {
+                  validator: function(_, value) {
+                    if (value === undefined || value === null || value === '') return Promise.resolve();
+                    if (typeof value !== 'number' || isNaN(value)) return Promise.reject('SOLO NÚMEROS');
+                    if (value < 0) return Promise.reject('EL PRECIO NO PUEDE SER NEGATIVO');
+                    return Promise.resolve();
+                  }
+                }
+              ]}
+            >
+              <InputNumber
+                min={0}
+                step={0.01}
+                precision={2}
+                style={{ width: '100%' }}
+                placeholder="Ej. 100.00 – Precio Unitario"
+              />
+            </Form.Item>
+
+            <Form.Item
+              label="Stock"
+              name="stock"
+              rules={[
+                { required: true, message: 'Ingrese el stock' },
+                {
+                  validator: function(_, value) {
+                    if (value === undefined || value === null || value === '') return Promise.resolve();
+                    if (typeof value !== 'number' || isNaN(value)) return Promise.reject('SOLO NÚMEROS');
+                    if (value < 0) return Promise.reject('EL STOCK NO PUEDE SER NEGATIVO');
+                    if (!Number.isInteger(value)) return Promise.reject('EL STOCK DEBE SER UN NÚMERO ENTERO');
+                    return Promise.resolve();
+                  }
+                }
+              ]}
+            >
+              <InputNumber
+                min={0}
+                step={1}
+                precision={0}
+                style={{ width: '100%' }}
+                placeholder="Ej. 10"
+              />
+            </Form.Item>
+
+            <Form.Item
+              label="Fecha de Entrada"
+              name="fechaEntrada"
+              rules={[
+                {
+                  validator: function(_, value) {
+                    if (!value) return Promise.resolve();
+                    var d = parseInputDate(value);
+                    if (!d) return Promise.reject('FECHA INVÁLIDA');
+                    var hoy = new Date();
+                    hoy.setHours(23,59,59,999);
+                    if (d.getTime() > hoy.getTime()) return Promise.reject('LA FECHA NO PUEDE SER MAYOR A HOY');
+                    return Promise.resolve();
+                  }
+                }
+              ]}
+            >
+              <Input type="date" />
+            </Form.Item>
+
+            <Form.Item label="Descripción" name="descripcion">
+              <Input.TextArea rows={3} placeholder="Detalles del producto" />
+            </Form.Item>
+
+            <Form.Item label="Sucursal" name="nombreSucursal"
+              rules={[{ required: true, message: 'Seleccione una sucursal' }]}>
+              <Select
+                options={sucursales.map(function (s) { return { value: s.nombreSucursal, label: s.nombreSucursal }; })}
+                showSearch={false}
+                placeholder="Seleccione sucursal"
+              />
+            </Form.Item>
+          </Form>
+        </Modal>
+
+        <Modal
+          centered
+          title="Eliminar Producto"
+          open={deleteOpen} visible={deleteOpen}
+          maskClosable={false}
+          keyboard={false}
+          destroyOnClose
+          confirmLoading={loading}
+          okText="Eliminar"
+          cancelText="Cancelar"
+          okButtonProps={{ danger: true }}
+          onCancel={function(){ setDeleteOpen(false); setToDelete(null); }}
+          onOk={confirmarEliminar}
+        >
+          <p>
+            ¿Seguro que deseas eliminar el producto{' '}
+            <b>{toDelete ? (toDelete.nombreProducto || ('ID ' + toDelete.id)) : ''}</b>?
+          </p>
+          <p>Esta acción no se puede deshacer.</p>
+        </Modal>
+      </Card>
+    </div>
   );
 }
 //</script>

@@ -203,6 +203,27 @@ function Routes() {
     };
     const [collapsed, setCollapsed] = useState(false);
 
+    // Forzar logout desde otros componentes (SessionGuard) mediante evento global
+    useEffect(() => {
+        const forceLogoutHandler = () => {
+            setIsAuthenticated(false);
+            localStorage.removeItem('isAuthenticated');
+            try { localStorage.removeItem('userRole'); localStorage.removeItem('userInfo'); } catch (_) {}
+            try {
+                if (history && history.push) {
+                    history.push("/login");
+                } else {
+                    window.location.href = window.location.origin + window.location.pathname + "#/login";
+                }
+            } catch(_) {
+                try { window.location.href = window.location.origin + window.location.pathname + "#/login"; } catch(__) {}
+            }
+        };
+        window.addEventListener('wbs:force-logout', forceLogoutHandler);
+        return () => window.removeEventListener('wbs:force-logout', forceLogoutHandler);
+    }, []);
+
+
     const [user, setUser] = useState(() => {
         try { return JSON.parse(localStorage.getItem('userInfo') || '{}'); }
         catch(_) { return {}; }
@@ -261,6 +282,8 @@ function Routes() {
                     </div>
                 </div>
                 </Layout.Content>
+                    <BottomNav onLogout={handleLogout} />
+                
 
                 <Layout.Footer style={{ background:'transparent', padding: 0 }}>
                 <AppFooter brand="SomniumIA" />

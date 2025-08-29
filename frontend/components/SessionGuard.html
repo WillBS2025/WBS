@@ -1,0 +1,157 @@
+//<script type="text/jsx">
+/**
+ * SessionGuard (para HTMLService + React + Babel en GAS)
+ * - Cierra sesión tras 10 min de inactividad
+ * - Cierra sesión cuando se cierra la última pestaña/ventana
+ * - No cierra sesión al recargar (reload)
+ */
+function SessionGuard({ children, inactivityMs = 600000 }) {
+  const tabIdRef = useRef(Math.random().toString(36).slice(2));
+  const timerRef = useRef(null);
+
+  const TABS_KEY = "wbs:tabs";
+  const TAB_SESSION_KEY = "wbs:tabSessionId";
+  const SHOULD_LOGOUT_NEXT_OPEN_KEY = "wbs:shouldLogOutOnNextOpen";
+
+  function getNavType() {
+    const navEntry = performance.getEntriesByType("navigation")[0];
+    if (navEntry && navEntry.type) return navEntry.type; // 'navigate' | 'reload' | 'back_forward' | 'prerender'
+    if (performance.navigation) {
+      const m = { 0: "navigate", 1: "reload", 2: "back_forward", 255: "navigate" };
+      return m[performance.navigation.type] || "navigate";
+    }
+    return "navigate";
+  }
+
+  function readTabs() {
+    try {
+      const raw = localStorage.getItem(TABS_KEY);
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+      return [];
+    }
+  }
+  function writeTabs(arr) {
+    localStorage.setItem(TABS_KEY, JSON.stringify(arr || []));
+  }
+
+  function clearAuthStorage() {
+    try {
+      localStorage.setItem("isAuthenticated", "false");
+      localStorage.removeItem("userInfo");
+      localStorage.removeItem("userRole");
+    } catch (_) {}
+    // limpia banderas internas
+    localStorage.removeItem(SHOULD_LOGOUT_NEXT_OPEN_KEY);
+  }
+
+  function backendLogoutIfAvailable() {
+    try {
+      if (
+        window.google &&
+        window.google.script &&
+        window.google.script.run &&
+        typeof window.google.script.run.withSuccessHandler === "function"
+      ) {
+        window.google.script.run.withSuccessHandler(function () {}).logout();
+      }
+    } catch (_) {}
+  }
+
+  function forceToLoginRoute() {
+    try {
+      // Forzamos la pantalla de login. Con BrowserRouter, basta con inhabilitar isAuthenticated.
+      // Colocamos hash por compatibilidad en Apps Script.
+      if (!String(window.location.hash || "").includes("/login")) {
+        window.location.hash = "#/login";
+      }
+    } catch (_) {}
+  }
+
+  function frontLogout() {
+    try { window.dispatchEvent(new Event('wbs:force-logout')); } catch (_) {}
+    clearAuthStorage();
+    backendLogoutIfAvailable();
+    forceToLoginRoute();
+  }
+
+  // 0) Al cargar: si la última pestaña marcó salida, cerramos; pero ignora recargas
+  useEffect(() => {
+    // Heurística robusta: sessionStorage persiste en el MISMO tab durante recargas
+    let isReload = false;
+    try {
+      if (sessionStorage.getItem(TAB_SESSION_KEY)) {
+        isReload = true;
+      }
+      // marca la sesión de este tab (se borra al cerrar el tab/ventana)
+      sessionStorage.setItem(TAB_SESSION_KEY, "1");
+    } catch (_) {}
+
+    const navType = getNavType();
+    const looksLikeReload = isReload || navType === "reload";
+
+    if (looksLikeReload) {
+      // Fue recarga: NO forzar logout y limpiar la marca que dejó el beforeunload
+      localStorage.removeItem(SHOULD_LOGOUT_NEXT_OPEN_KEY);
+      // Regresar a Inicio explícitamente (requisito)
+      try {
+        const target = "#/";
+        const current = String(window.location.hash || "");
+        if (!current.startsWith(target)) window.location.hash = target;
+      } catch (_) {}
+    } else {
+      // Navegación "nueva": si la última pestaña dejó marcado logout, aplicarlo
+      if (localStorage.getItem(SHOULD_LOGOUT_NEXT_OPEN_KEY) === "1") {
+        frontLogout();
+      }
+    }
+  }, []);
+
+  // 1) Gestión de múltiples pestañas
+  useEffect(() => {
+    const id = tabIdRef.current;
+    const tabs = readTabs();
+    if (!tabs.includes(id)) {
+      tabs.push(id);
+      writeTabs(tabs);
+    }
+
+    const handleBeforeUnload = () => {
+      const current = readTabs().filter((t) => t !== id);
+      writeTabs(current);
+      if (current.length === 0) {
+        // Puede ser reload; en el próximo load se verificará el tipo de navegación
+        localStorage.setItem(SHOULD_LOGOUT_NEXT_OPEN_KEY, "1");
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      const current = readTabs().filter((t) => t !== id);
+      writeTabs(current);
+    };
+  }, []);
+
+  // 2) Inactividad (10 min)
+  useEffect(() => {
+    const resetTimer = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        frontLogout();
+      }, inactivityMs);
+    };
+
+    const events = ["click", "keydown", "mousemove", "scroll", "touchstart", "touchmove", "visibilitychange"];
+    events.forEach((ev) => window.addEventListener(ev, resetTimer, { passive: true }));
+    resetTimer();
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, resetTimer));
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [inactivityMs]);
+
+  return <React.Fragment>{children}</React.Fragment>;
+}
+//</script>

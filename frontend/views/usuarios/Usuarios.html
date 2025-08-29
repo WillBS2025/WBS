@@ -1,8 +1,7 @@
-
 <div id="UsuariosView"></div>
 <script type="text/babel">
-const { useState, useEffect } = React;
-const { Table, Button, Modal, Form, Input, Select, Space, message, Typography } = antd;
+const { useState, useEffect, useRef } = React;
+const { Table, Button, Modal, Form, Input, Select, Space, message, Typography, Card, Row, Col, Tag } = antd;
 const icons = (window.icons || window.iconsAntd || {});
 const { Title } = Typography;
 
@@ -13,6 +12,7 @@ function Usuarios() {
   const [mode, setMode] = useState('create'); // 'create' | 'edit'
   const [form] = antd.Form.useForm();
   const [empleados, setEmpleados] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
   const [toDelete, setToDelete] = useState(null);
   const [sucursalFiltro, setSucursalFiltro] = useState(null);
   const [openDelete, setOpenDelete] = useState(false);
@@ -26,7 +26,7 @@ function Usuarios() {
     { title: 'Estado', dataIndex: 'estado', key: 'estado' },
     {
       title: 'Acciones',
-      key: 'acciones',
+      key: 'acciones', fixed: 'right',
       width: 160,
       render: (_, record) => (
         <Space>
@@ -40,14 +40,12 @@ function Usuarios() {
   useEffect(() => {
     cargar();
     cargarEmpleados();
+    cargarSucursales();
   }, []);
 
   function normalizeResponse(res) {
-    try {
-      return (typeof res === 'string') ? JSON.parse(res) : res;
-    } catch (e) {
-      return res;
-    }
+    try { return (typeof res === 'string') ? JSON.parse(res) : res; }
+    catch (e) { return res; }
   }
 
   function cargar() {
@@ -71,28 +69,39 @@ function Usuarios() {
       .withSuccessHandler((res) => {
         const r = normalizeResponse(res);
         const arr = Array.isArray((r && r.empleados)) ? r.empleados : Array.isArray(r) ? r : [];
-        // Solo nombres y sucursal para autollenado en backend
         setEmpleados(arr.filter(e => String(e.estado||'')==='Activo'));
       })
       .withFailureHandler(() => setEmpleados([]))
       .listarEmpleados();
   }
 
-  function abrirNuevo(){
-    setMode('create');
-    form.resetFields();
-    setOpen(true);
+  function cargarSucursales() {
+    google.script.run
+      .withSuccessHandler((res) => {
+        try {
+          const r = (typeof res === 'string') ? JSON.parse(res) : res;
+          const arr = (r && r.ok && Array.isArray(r.sucursales)) ? r.sucursales : (Array.isArray(r) ? r : []);
+          setSucursales(arr);
+        } catch (_) { setSucursales([]); }
+      })
+      .withFailureHandler(() => setSucursales([]))
+      .listarSucursales();
   }
 
+  function abrirNuevo(){
+    setMode('create'); form.resetFields(); setOpen(true);
+  }
   function abrirEditar(record){
     setMode('edit');
     form.setFieldsValue({
       id: record.id,
       nombreCompleto: record.nombreCompleto,
       correo: record.correo,
-      contrasenia: '', // por seguridad no mostramos hash/valor
+      nombreSucursal: record.nombreSucursal,
+      contrasenia: '',
       rol: record.rol,
       estado: record.estado,
+      nombre_usuario: record.nombre_usuario,
     });
     setOpen(true);
   }
@@ -100,7 +109,6 @@ function Usuarios() {
   function onSubmit(){
     form.validateFields().then(values => {
       setLoading(true);
-
       const runner = (mode==='create') ? 'guardarUsuarioSeguro' : 'actualizarUsuarioSeguro';
       const payload = {
         id: values.id || undefined,
@@ -109,6 +117,7 @@ function Usuarios() {
         contrasenia: values.contrasenia || '',
         rol: values.rol,
         estado: values.estado,
+        nombreSucursal: values.nombreSucursal,
       };
 
       google.script.run
@@ -141,9 +150,7 @@ function Usuarios() {
         const r = normalizeResponse(res);
         if (r && (r.ok || r.titulo)) {
           message.success('Usuario eliminado');
-          setOpenDelete(false);
-          setToDelete(null);
-          cargar();
+          setOpenDelete(false); setToDelete(null); cargar();
         } else {
           Modal.error({ title: 'Error', content: (r && r.message) || 'No se pudo eliminar' });
         }
@@ -155,11 +162,99 @@ function Usuarios() {
       .eliminarUsuario(toDelete.id);
   }
 
+  /* ========== NUEVO: Estilo + KPIs y dashboards (look Sucursales) ========== */
+  function useCountUp(value, duration=700){
+    const [display, setDisplay] = useState(0);
+    const prevRef = useRef(0);
+    useEffect(()=>{
+      const start = performance.now();
+      const from = prevRef.current;
+      const to = Number(value||0);
+      let raf;
+      function tick(t){
+        const p = Math.min(1, (t - start)/duration);
+        const eased = 1 - Math.pow(1 - p, 3);
+        setDisplay(from + (to - from) * eased);
+        if (p < 1) raf = requestAnimationFrame(tick);
+      }
+      raf = requestAnimationFrame(tick);
+      prevRef.current = to;
+      return ()=> cancelAnimationFrame(raf);
+    }, [value, duration]);
+    return display;
+  }
+  function KPI({ title, value, suffix }){
+    const v = useCountUp(value);
+    return (
+      <Card bodyStyle={{ padding: 14 }} className="usr-kpi">
+        <div className="usr-kpi-sub">{title}</div>
+        <div className="usr-kpi-val">{Math.round(Number(v))}{suffix||''}</div>
+      </Card>
+    );
+  }
+
+  // Dataset filtrado por la sucursal seleccionada (para que KPIs respondan al filtro)
+  const filtered = (Array.isArray(data)?data:[]).filter(r => !sucursalFiltro || String(r.nombreSucursal||'')===String(sucursalFiltro));
+
+  // KPIs
+  const total = filtered.length;
+  const activos = filtered.filter(r => String(r.estado||'')==='Activo').length;
+  const inactivos = filtered.filter(r => String(r.estado||'')==='Inactivo').length;
+  const sucursalesConUsuarios = new Set(filtered.map(r=>r.nombreSucursal).filter(Boolean)).size;
+
+  // Distribuciones
+  const rolMap = {}; filtered.forEach(r => { const k=(r.rol||'').toLowerCase(); rolMap[k]=(rolMap[k]||0)+1; });
+  const rolRows = Object.keys(rolMap).map(k => ({ rol: (k||'').replace('_',' ').toUpperCase(), cantidad: rolMap[k] }));
+
+  const sucMap = {}; filtered.forEach(r => { const s=r.nombreSucursal||'(Sin suc.)'; sucMap[s]=(sucMap[s]||0)+1; });
+  const sucRows = Object.keys(sucMap).map(s => ({ sucursal:s, cantidad:sucMap[s] })).sort((a,b)=> b.cantidad - a.cantidad);
+  const maxSuc = Math.max(1, ...sucRows.map(r=>r.cantidad));
+
+  const colsRoles = [
+    { title:'Rol', dataIndex:'rol', key:'rol' },
+    { title:'Usuarios', dataIndex:'cantidad', key:'cantidad', align:'right', width:110 },
+  ];
+  const colsSucursales = [
+    { title:'Sucursal', dataIndex:'sucursal', key:'sucursal' },
+    { title:'Usuarios', dataIndex:'cantidad', key:'cantidad', align:'right', width:110 },
+    { title:'', key:'bar', render:(_,r)=>(
+      <div className="usr-bar"><span style={{ width:(r.cantidad*100/maxSuc)+'%' }} /></div>
+    )},
+  ];
+
   return (
     <div className="p-4">
-      
+      {/* ===== Estilos scopeados (no tocan tu sidebar) ===== */}
+      <style>{`
+        .usr-hero{ display:flex; align-items:center; gap:10px; }
+        .usr-hero-title{ position:relative; padding-left:12px; font-weight:800; }
+        .usr-spark{
+          position:absolute; left:0; top:6px; width:6px; height:22px; border-radius:3px;
+          background: linear-gradient(180deg,#60a5fa,#a78bfa,#34d399);
+          animation: usrSpark 2.6s ease-in-out infinite;
+        }
+        @keyframes usrSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
+
+        .usr-kpi{ border-radius:14px; background: linear-gradient(135deg,#e0eaff,#e9fff6); box-shadow: 0 2px 10px rgba(15,23,42,.06); }
+        .usr-kpi-sub{ font-size:12px; color:#6b7280 }
+        .usr-kpi-val{ font-size:26px; font-weight:800; color:#0f172a }
+
+        .usr-bar{ height:10px; background:#eef2ff; border-radius:999px; overflow:hidden; }
+        .usr-bar > span{ display:block; height:100%; background:linear-gradient(90deg,#60a5fa,#34d399); }
+
+        .usr-table .ant-table{ border-radius:14px; overflow:hidden; }
+        .usr-table .ant-table-thead > tr > th{ background:#f8fafc !important; border-bottom:0; color:#334155; font-weight:700; }
+        .usr-table .ant-table-tbody > tr{ transition: transform .15s ease, box-shadow .15s ease, background .2s; }
+        .usr-table .ant-table-tbody > tr:hover{ transform: scale(1.01); box-shadow: 0 10px 24px rgba(2,6,23,.08); }
+        .usr-table .ant-table-tbody > tr:nth-child(odd) td{ background:#fcfdff; }
+      `}</style>
+
+      {/* ======= Tu header original (NO LO QUITO) ======= */}
       <div className="flex items-center justify-between mb-3">
-        <Title level={4} style={{ margin: 0 }}>Usuarios</Title>
+        <div className="usr-hero">
+          <icons.UserOutlined />
+          <div className="usr-hero-title"><span className="usr-spark"></span>Usuarios</div>
+        </div>
         <Space>
           <Select allowClear placeholder="Filtrar por sucursal" style={{width:220}}
                   value={sucursalFiltro}
@@ -170,15 +265,42 @@ function Usuarios() {
           <Button type="primary" icon={<icons.PlusOutlined />} onClick={abrirNuevo}>Nuevo</Button>
         </Space>
       </div>
-    
-      <Table
-        rowKey="id"
-        dataSource={Array.isArray(data)?data:[]}
-        columns={Array.isArray(columns)?columns:[]}
-        loading={loading}
-        pagination={{ pageSize: 8 }}
-      />
 
+      {/* ===== KPIs ===== */}
+      <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+        <Col xs={24} sm={6}><KPI title="Usuarios" value={total} /></Col>
+        <Col xs={24} sm={6}><KPI title="Activos" value={activos} /></Col>
+        <Col xs={24} sm={6}><KPI title="Inactivos" value={inactivos} /></Col>
+        <Col xs={24} sm={6}><KPI title="Sucursales con usuarios" value={sucursalesConUsuarios} /></Col>
+      </Row>
+
+      {/* ===== Dashboards ===== */}
+      <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
+        <Col xs={24} lg={12}>
+          <Card size="small" title="Distribución por sucursal">
+            <Table size="small" dataSource={sucRows.map((r,i)=>({ ...r, key:i }))} columns={colsSucursales} pagination={false} rowKey="key" />
+          </Card>
+        </Col>
+        <Col xs={24} lg={12}>
+          <Card size="small" title="Distribución por rol">
+            <Table size="small" dataSource={rolRows.map((r,i)=>({ ...r, key:i }))} columns={colsRoles} pagination={false} rowKey="key" />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* ===== Tu tabla original, solo envuelta para el estilo ===== */}
+      <div className="usr-table">
+        <Table
+          rowKey="id"
+          dataSource={filtered}
+          columns={Array.isArray(columns)?columns:[]}
+          loading={loading}
+          pagination={{ pageSize: 8 }}
+          scroll={{ x: true }}
+        />
+      </div>
+
+      {/* ===== Modales originales (SIN CAMBIOS) ===== */}
       <Modal
         visible={open}
         onCancel={()=>setOpen(false)}
@@ -216,31 +338,19 @@ function Usuarios() {
           >
             <Input.Password placeholder={mode==='create'?'Nueva contraseña':'(Opcional) nueva contraseña'} />
           </Form.Item>
-          <Form.Item
-            name="rol"
-            label="Rol"
-            rules={[{ required:true, message:'Selecciona un rol' }]}
-          >
-            <Select
-              options={[
-                { value:'super_admin', label:'Super Admin' },
-                { value:'admin', label:'Admin' }
-              ]}
-            />
+          <Form.Item name="nombreSucursal" label="Sucursal" rules={[{ required:true, message:'Selecciona una sucursal' }]}>
+            <Select placeholder="Selecciona sucursal...">
+              {Array.isArray(sucursales) && sucursales.map(s => (
+                <Select.Option key={s} value={s}>{s}</Select.Option>
+              ))}
+            </Select>
           </Form.Item>
-          <Form.Item
-            name="estado"
-            label="Estado"
-            rules={[{ required:true, message:'Selecciona estado' }]}
-          >
-            <Select
-              options={[
-                { value:'Activo', label:'Activo' },
-                { value:'Inactivo', label:'Inactivo' }
-              ]}
-            />
+          <Form.Item name="rol" label="Rol" rules={[{ required:true, message:'Selecciona un rol' }]}>
+            <Select options={[ { value:'super_admin', label:'Super Admin' }, { value:'admin', label:'Admin' } ]} />
           </Form.Item>
-          {/* Campo Sucursal NO se muestra, se asigna automáticamente en el backend */}
+          <Form.Item name="estado" label="Estado" rules={[{ required:true, message:'Selecciona estado' }]}>
+            <Select options={[ { value:'Activo', label:'Activo' }, { value:'Inactivo', label:'Inactivo' } ]} />
+          </Form.Item>
         </Form>
       </Modal>
 

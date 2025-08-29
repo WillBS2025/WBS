@@ -1,13 +1,418 @@
 //<script type="text/jsx">
-
 function Inicio() {
-    let inicio =0;
-    if (inicio = 1) {
-        return (
-        <div>Realizando pruebas</div>
-    );
-    }
-    
-}
+  const { useState, useEffect } = React;
+  const { Card, Row, Col, Space, Select, Button, Table, Tag, Statistic } = antd;
 
+  // === Roles (igual que Sidebar)
+  const [role] = useState(() => { try { return localStorage.getItem('userRole') || 'admin'; } catch (_) { return 'admin'; } });
+  const norm = (role || '').toString().trim().toLowerCase();
+  const isAdmin = norm === 'admin';
+  const isSuperAdmin = norm === 'super_admin';
+
+  const icons = (window.icons || window.iconsAntd || {});
+
+  // === Contexto para filtrar ventas por sucursal (ADMIN)
+  const [ctx, setCtx] = useState({ usuario:'', sucursal:'' });
+  function cargarContexto(){
+    const usuarioActual = (window.localStorage && localStorage.getItem('userInfo'))
+      ? (function(){ try{ return JSON.parse(localStorage.getItem('userInfo')).nombre_usuario || ''; }catch(_){ return '' } })()
+      : '';
+    try{
+      google.script.run
+        .withSuccessHandler(function(res){
+          try{
+            const r = (typeof res==='string') ? JSON.parse(res) : res;
+            setCtx({ usuario: r.usuario || usuarioActual, sucursal: r.sucursal || '' });
+          }catch(_){ setCtx({ usuario: usuarioActual, sucursal:'' }); }
+        })
+        .withFailureHandler(function(){ setCtx({ usuario: usuarioActual, sucursal:'' }); })
+        .obtenerContextoVenta(usuarioActual);
+    }catch(_){ setCtx({ usuario: usuarioActual, sucursal:'' }); }
+  }
+
+  const [loading, setLoading] = useState(false);
+  const [refreshMs, setRefreshMs] = useState(60000);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  // Datos existentes
+  const [productos, setProductos] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
+  const [gastos, setGastos] = useState([]);
+  const [compras, setCompras] = useState([]);
+  const [sucursales, setSucursales] = useState([]);
+
+  // Ventas reales (misma fuente que la página Ventas)
+  const [ventas, setVentas] = useState([]);
+  const [ventaFiltro, setVentaFiltro] = useState('semana');
+
+  // ===== Helpers
+  function safeParse(x){ try{ return (typeof x==='string')? JSON.parse(x) : x; }catch(_){ return x; } }
+  function formatHNL(n){ n = Number(n)||0; try{ return new Intl.NumberFormat('es-HN',{style:'currency',currency:'HNL',maximumFractionDigits:2}).format(n);}catch(_){return 'L. '+(Math.round(n*100)/100).toFixed(2);} }
+  function thisMonthFilter(){ const d=new Date(); return { mes:d.getMonth()+1, anio:d.getFullYear() }; }
+  function parseFechaFlexible(v){
+    if (v instanceof Date) return v;
+    if (typeof v === 'number') return new Date(v);
+    if (typeof v === 'string'){
+      if (/^\d{4}-\d{2}-\d{2}/.test(v)) return new Date(v);
+      const m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (m){ let d=parseInt(m[1],10), mo=parseInt(m[2],10)-1, y=parseInt(m[3],10); if (y<100) y+=2000; return new Date(y,mo,d); }
+      const d2 = new Date(v); if (!isNaN(d2)) return d2;
+      return null;
+    }
+    const d0 = new Date(v); return isNaN(d0) ? null : d0;
+  }
+  function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  function sameYMD(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+  function estadoOf(v){ return String(v.estado||v.estatus||'').toLowerCase(); }
+  function vendedorOf(v){ return String(v.vendedor||v.empleado||v.nombre_empleado||v.usuario||v.creadoPor||''); }
+  function sucursalOf(v){ return String(v.nombreSucursal||v.sucursal||''); }
+  function montoOf(v){
+    const t = Number(v.total);
+    if (isFinite(t)) return t;
+    return Number(v.sub_total||0) - Number(v.descuento||0);
+  }
+  function fechaOf(v){
+    const k=v.fecha||v.Fecha||v._createdAt||v.fechaVenta||v.fecha_venta||v.fechaCierre||v.createdAt||v.actualizado;
+    if(!k) return null; const d=parseFechaFlexible(k); return d && !isNaN(d) ? d : null;
+  }
+
+  // ===== Llamadas
+  function gsCall(name, args){
+    return new Promise(resolve=>{
+      try{
+        google.script.run
+          .withSuccessHandler(res=>resolve({ok:true,data:res}))
+          .withFailureHandler(()=>resolve({ok:false}))
+          [name].apply(google.script.run, args||[]);
+      }catch(_){ resolve({ok:false}); }
+    });
+  }
+  async function callFirst(candidates){
+    for (let i=0;i<candidates.length;i++){
+      const {fn,args} = candidates[i];
+      const r = await gsCall(fn, args);
+      if (r.ok) return safeParse(r.data);
+    }
+    return [];
+  }
+  function loadProductos(){ return new Promise(resolve=>{ google.script.run.withSuccessHandler(res=>resolve(safeParse(res)||[])).withFailureHandler(()=>resolve([])).listarProductos(); }); }
+  function loadEmpleados(){ return new Promise(resolve=>{ google.script.run.withSuccessHandler(res=>resolve(safeParse(res)||[])).withFailureHandler(()=>resolve([])).listarEmpleados(); }); }
+  function loadGastos(){ const filtros=thisMonthFilter(); return new Promise(resolve=>{ google.script.run.withSuccessHandler(res=>resolve(safeParse(res)||[])).withFailureHandler(()=>resolve([])).listarGastos(JSON.stringify(filtros)); }); }
+  function loadCompras(){ return new Promise(resolve=>{ google.script.run.withSuccessHandler(res=>resolve(safeParse(res)||[])).withFailureHandler(()=>resolve([])).listarComprasSuministros(); }); }
+  async function loadSucursales(){
+    const data = await callFirst([
+      { fn:'sucursales_listar_activas' },
+      { fn:'listarSucursalesActivas' },
+      { fn:'sucursales_listar' },
+      { fn:'listarSucursales' }
+    ]);
+    if (Array.isArray(data)) return data.filter(x=>String((x.estado||'')).toLowerCase().includes('activo'));
+    if (data && data.ok && Array.isArray(data.sucursales)) return data.sucursales;
+    return [];
+  }
+  async function loadVentas(){
+    const base = await callFirst([
+      { fn:'listarFacturasFront' },                             // ← fuente real
+      { fn:'listarVentasPorPeriodo', args:[ventaFiltro] },      // fallbacks
+      { fn:'ventas_listar_por_periodo', args:[ventaFiltro] },
+      { fn:'ventas_listar' }, { fn:'listarVentas' },
+      { fn:'listarVentasCerradas' }, { fn:'ventas_listar_cerradas' }
+    ]);
+    if (Array.isArray(base)) return base;
+    if (base && base.ok && Array.isArray(base.data)) return base.data;
+    return [];
+  }
+
+  // ===== Ciclo de vida
+  useEffect(()=>{ cargarContexto(); },[]);
+  function refreshAll(){
+    setLoading(true);
+    Promise.all([loadProductos(),loadEmpleados(),loadGastos(),loadCompras(),loadSucursales(),loadVentas()]).then(([p,e,g,c,s,v])=>{
+      setProductos(Array.isArray(p)?p:[]);
+      setEmpleados(Array.isArray(e)?e:[]);
+      setGastos(Array.isArray(g)?g:[]);
+      setCompras(Array.isArray(c)?c:[]);
+      setSucursales(Array.isArray(s)?s:[]);
+      setVentas(Array.isArray(v)?v:[]);
+      setLastUpdated(new Date());
+    }).finally(()=>setLoading(false));
+  }
+  useEffect(()=>{ refreshAll(); },[]);
+  useEffect(()=>{ if(!refreshMs) return; const t=setInterval(refreshAll, refreshMs); return ()=>clearInterval(t); },[refreshMs]);
+  useEffect(()=>{ loadVentas().then(v=>setVentas(Array.isArray(v)?v:[])); },[ventaFiltro, ctx.sucursal]);
+
+  // ===== KPIs varios
+  const totalProductos = productos.length;
+  const totalStock = productos.reduce((a,r)=>a+Number(r.stock||0),0);
+  const lowStock = [...productos].sort((a,b)=>Number(a.stock||0)-Number(b.stock||0)).slice(0,5);
+  const empleadosActivos = empleados.filter(x=>String(x.estado||'').toLowerCase().includes('activo')).length;
+  const proximosCumples = empleados.map(x=>{ const d=x.fecha_nacimiento?new Date(x.fecha_nacimiento):null; if(!d||isNaN(d))return null; const hoy=startOfDay(new Date()); const prox=new Date(hoy.getFullYear(),d.getMonth(),d.getDate()); if(prox<hoy) prox.setFullYear(prox.getFullYear()+1); const dias=Math.round((prox-hoy)/86400000); return { nombre:x.nombre_empleado, nombreSucursal:x.nombreSucursal, enDias:dias }; }).filter(Boolean).sort((a,b)=>a.enDias-b.enDias).slice(0,5);
+  const totalGastosMes = gastos.reduce((a,r)=>a+Number(r.monto||0),0);
+  const gastosRecientes = [...gastos].sort((a,b)=>{ const da=new Date(a.fecha), db=new Date(b.fecha); return db-da; }).slice(0,6);
+  const totalSucursalesActivas = sucursales.length;
+  function estadoLote(r){ const ini=r&&r.fechaInicioUso; const fin=r&&r.fechaFinUso; if(ini&&!fin)return'EN_USO'; if(ini&&fin)return'COMPLETADO'; return'NUEVO'; }
+  const comprasEstado = compras.reduce((acc,r)=>{ const e=estadoLote(r); acc[e]=(acc[e]||0)+1; return acc; },{NUEVO:0,EN_USO:0,COMPLETADO:0});
+
+  // ===== Ventas reales con regla por rol
+  const hoy = startOfDay(new Date());
+  const endHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate(), 23,59,59,999);
+  const hace7 = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate() - 6);
+
+  const ventasSegunRol = (Array.isArray(ventas)?ventas:[]).filter(r=>{
+    if (isSuperAdmin) return true;
+    if (!ctx.sucursal) return false;
+    return String(sucursalOf(r)) === String(ctx.sucursal);
+  });
+  const ventasCerradas = ventasSegunRol.filter(v=>{
+    const e = estadoOf(v);
+    return (e === '' || e === 'cerrada' || e==='cerrado' || e==='pagada' || e==='pagado' || e==='finalizada');
+  });
+
+  const ventasHoyArr    = ventasCerradas.filter(v=>{ const d=fechaOf(v); return d && d>=hoy && d<=endHoy; });
+  const ventasSemanaArr = ventasCerradas.filter(v=>{ const d=fechaOf(v); return d && d>=hace7 && d<=endHoy; });
+
+  const montoHoy    = ventasHoyArr.reduce((a,v)=>a+montoOf(v),0);
+  const montoSemana = ventasSemanaArr.reduce((a,v)=>a+montoOf(v),0);
+
+  // NUEVO: contadores/metricas pequeñas para ADMIN
+  const cantVentasHoy = ventasHoyArr.length;
+  const cantVentas7   = ventasSemanaArr.length;
+  const ticketPromHoy = cantVentasHoy ? (montoHoy / cantVentasHoy) : 0;
+
+  // Tabla de ventas (usa filtro del selector)
+  const ventasTabla = (ventaFiltro==='dia'? ventasHoyArr : ventasSemanaArr)
+    .slice(0,10)
+    .map((v,i)=>({ key:i, fecha:fechaOf(v), empleado:vendedorOf(v), monto:montoOf(v) }));
+
+  const colsLowStock = [
+    { title:'Producto', dataIndex:'nombreProducto', key:'nombreProducto' },
+    { title:'Stock', dataIndex:'stock', key:'stock', align:'right', width:90 },
+    { title:'Sucursal', dataIndex:'nombreSucursal', key:'nombreSucursal', width:180 }
+  ];
+  const colsGastosRecientes = [
+    { title:'Fecha', dataIndex:'fecha', key:'fecha', width:110, render:v=>{ try{ const d=new Date(v); const dd=String(d.getDate()).padStart(2,'0'); const mm=String(d.getMonth()+1).padStart(2,'0'); return dd+'/'+mm+'/'+d.getFullYear(); }catch(_){ return ''; } } },
+    { title:'Categoría', dataIndex:'categoria', key:'categoria', width:140, render:v=><Tag color="blue">{v||'-'}</Tag> },
+    { title:'Descripción', dataIndex:'descripcion', key:'descripcion' },
+    { title:'Monto', dataIndex:'monto', key:'monto', align:'right', width:120, render:v=><b>{formatHNL(v)}</b> },
+    { title:'Sucursal', dataIndex:'nombreSucursal', key:'nombreSucursal', width:160 }
+  ];
+  const colsVentas = [
+    { title:'Fecha', dataIndex:'fecha', key:'fecha', width:110, render:v=>{ if(!v) return ''; const d=v; const dd=String(d.getDate()).padStart(2,'0'); const mm=String(d.getMonth()+1).padStart(2,'0'); return dd+'/'+mm+'/'+d.getFullYear(); } },
+    { title:'Empleado', dataIndex:'empleado', key:'empleado' },
+    { title:'Monto', dataIndex:'monto', key:'monto', align:'right', width:120, render:v=><b>{formatHNL(v)}</b> }
+  ];
+
+  // Etiqueta auto-refresh
+  const refreshLabel =
+    !refreshMs ? 'Auto-actualizar: Apagado'
+    : (refreshMs===30000 ? 'Auto-actualizar: cada 30s'
+    : (refreshMs===60000 ? 'Auto-actualizar: cada 1 min'
+    : (refreshMs===300000 ? 'Auto-actualizar: cada 5 min' : 'Auto-actualizar: activo')));
+
+  return (
+    <div className="inicio-wrap">
+      <style>{`
+        :root{
+          --tone-blue-a:#e6f4ff;   --tone-blue-b:#ffffff;
+          --tone-green-a:#f6ffed;  --tone-green-b:#ffffff;
+          --tone-purple-a:#f9f0ff; --tone-purple-b:#ffffff;
+          --tone-amber-a:#fff7e6;  --tone-amber-b:#ffffff;
+          --sep-color:#e2e8f0; --muted:#64748b; --head:#334155;
+        }
+        .inicio-hero{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+        .inicio-hero-title{ position:relative; padding-left:12px; font-weight:800; display:inline-block; }
+        .inicio-spark{ position:absolute; left:0; top:6px; width:6px; height:22px; border-radius:3px;
+          background: linear-gradient(180deg,#60a5fa,#a78bfa,#34d399); animation: inicioSpark 2.6s ease-in-out infinite; }
+        @keyframes inicioSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
+        .inicio-hero-sep{ width:1px; height:22px; background:var(--sep-color); display:inline-block; }
+        .inicio-hero-meta{ font-size:12px; color:var(--muted); display:flex; align-items:center; gap:10px; }
+        .grid-gap { margin-top:12px }
+        .tile { border-radius:16px; overflow:hidden; box-shadow: 0 6px 18px rgba(2,6,23,.06); transition: transform .2s ease, box-shadow .2s ease; }
+        .tile:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(2,6,23,.12); }
+        .tone-blue  .ant-card-body { background: linear-gradient(180deg,var(--tone-blue-a),  var(--tone-blue-b)); }
+        .tone-green .ant-card-body { background: linear-gradient(180deg,var(--tone-green-a), var(--tone-green-b)); }
+        .tone-purple .ant-card-body { background: linear-gradient(180deg,var(--tone-purple-a),var(--tone-purple-b)); }
+        .tone-amber .ant-card-body { background: linear-gradient(180deg,var(--tone-amber-a), var(--tone-amber-b)); }
+        .kpi .ant-statistic-title { color:#64748b }
+        .kpi .ant-statistic-content { font-weight:700 }
+        .mini .ant-card-body{ padding:10px 12px }
+        .mini .ant-statistic-content{ font-size:18px }
+        .equal-sm { min-height: 300px }
+        .tight .ant-card-head { margin:0; padding:12px 16px }
+        .tight .ant-card-body { padding:12px 16px }
+        .inicio-wrap .ant-table{ border-radius:14px; overflow:hidden; }
+        .inicio-wrap .ant-table-thead > tr > th{ background:#f8fafc !important; border-bottom:0; color:var(--head); font-weight:700; }
+        .inicio-wrap .ant-table-tbody > tr{ transition: transform .15s ease, box-shadow .15s ease, background .2s; animation: iFadeUp .35s ease both; }
+        @keyframes iFadeUp{ from{ opacity:0; transform:translateY(6px) } to{ opacity:1; transform:translateY(0) } }
+        .inicio-wrap .ant-table-tbody > tr:hover{ transform: scale(1.01); box-shadow: 0 10px 24px rgba(2,6,23,.08); }
+        .inicio-wrap .ant-table-tbody > tr:nth-child(odd) td{ background:#fcfdff; }
+      `}</style>
+
+      {/* ===== Header ===== */}
+      <Row justify="space-between" align="middle" style={{ marginBottom: 8 }}>
+        <Col>
+          <div className="inicio-hero">
+            <icons.DashboardOutlined />
+            <div className="inicio-hero-title"><span className="inicio-spark"></span>Resumen general</div>
+            <span className="inicio-hero-sep"></span>
+            <div className="inicio-hero-meta">
+              <span>{lastUpdated ? ('Actualizado: ' + lastUpdated.toLocaleString()) : 'Actualizado: —'}</span>
+              <span>•</span>
+              <span>{refreshLabel}</span>
+            </div>
+          </div>
+        </Col>
+        <Col>
+          <Space>
+            <Select value={String(refreshMs)} onChange={v=>setRefreshMs(Number(v))} style={{ width: 180 }} options={[
+              { value:'0', label:'Auto-actualizar: Apagado' },
+              { value:'30000', label:'Cada 30s' },
+              { value:'60000', label:'Cada 1 min' },
+              { value:'300000', label:'Cada 5 min' }
+            ]}/>
+            <Button onClick={refreshAll} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
+          </Space>
+        </Col>
+      </Row>
+
+      {/* ===== KPIs (por rol) ===== */}
+      {isAdmin ? (
+        // ADMIN: 4 tarjetas bien distribuidas (incluye 2 mini a la derecha de ventas)
+        <Row gutter={[12,12]}>
+          <Col xs={24} md={12} lg={6}>
+            <Card className="tile tone-blue kpi tight">
+              <Statistic title="Productos activos" value={totalProductos} />
+              <div style={{ color:'#888', fontSize:12 }}>Stock total: <b>{totalStock}</b></div>
+            </Card>
+          </Col>
+
+          <Col xs={24} md={12} lg={6}>
+            <Card className="tile tone-purple kpi tight">
+              <Row align="middle" justify="space-between">
+                <Col>
+                  <Statistic
+                    title={ventaFiltro==='dia'?'Ventas de hoy (monto)':'Ventas 7 días (monto)'}
+                    value={ventaFiltro==='dia'? formatHNL(montoHoy) : formatHNL(montoSemana)}
+                  />
+                </Col>
+                <Col>
+                  <Select size="small" value={ventaFiltro} onChange={setVentaFiltro} style={{ width:120 }} options={[
+                    { value:'dia', label:'Hoy' },
+                    { value:'semana', label:'7 días' }
+                  ]}/>
+                </Col>
+              </Row>
+            </Card>
+          </Col>
+
+          {/* MINI #1: cantidad de ventas hoy */}
+          <Col xs={12} md={6} lg={6}>
+            <Card className="tile tone-purple kpi tight mini">
+              <Statistic title="Ventas (hoy)" value={cantVentasHoy} />
+            </Card>
+          </Col>
+
+          {/* MINI #2: ticket promedio hoy */}
+          <Col xs={12} md={6} lg={6}>
+            <Card className="tile tone-amber kpi tight mini">
+              <Statistic title="Ticket prom. (hoy)" value={formatHNL(ticketPromHoy)} />
+            </Card>
+          </Col>
+        </Row>
+      ) : (
+        // SUPER_ADMIN: dejas tus 4 KPIs de siempre
+        <Row gutter={[12,12]}>
+          <Col xs={24} md={12} lg={6}>
+            <Card className="tile tone-amber kpi tight"><Statistic title="Gastos del mes" value={formatHNL(totalGastosMes)} /></Card>
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <Card className="tile tone-blue kpi tight"><Statistic title="Productos activos" value={totalProductos} /><div style={{ color:'#888', fontSize:12 }}>Stock total: <b>{totalStock}</b></div></Card>
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <Card className="tile tone-green kpi tight"><Statistic title="Sucursales activas" value={totalSucursalesActivas} /><div style={{ color:'#888', fontSize:12 }}>Empleados activos: <b>{empleadosActivos}</b></div></Card>
+          </Col>
+          <Col xs={24} md={12} lg={6}>
+            <Card className="tile tone-purple kpi tight">
+              <Row align="middle" justify="space-between">
+                <Col><Statistic title={ventaFiltro==='dia'?'Ventas de hoy':'Ventas 7 días'} value={ventaFiltro==='dia'? formatHNL(montoHoy) : formatHNL(montoSemana)} /></Col>
+                <Col>
+                  <Select size="small" value={ventaFiltro} onChange={setVentaFiltro} style={{ width:120 }} options={[
+                    { value:'dia', label:'Hoy' },
+                    { value:'semana', label:'7 días' }
+                  ]}/>
+                </Col>
+              </Row>
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {/* ===== Filas de tablas ===== */}
+      {isAdmin ? (
+        <>
+          {/* ADMIN: “Bajo stock” a la izquierda y “Ventas últimas” a la derecha */}
+          <Row gutter={[12,12]} className="grid-gap">
+            <Col xs={24} lg={12}>
+              <Card title="Productos con bajo stock (Top 5)" className="tile tight equal-sm">
+                <Table size="small" dataSource={lowStock} columns={colsLowStock} rowKey={r=>(r&&r.id!=null)?r.id:r.key} pagination={false}/>
+              </Card>
+            </Col>
+            <Col xs={24} lg={12}>
+              <Card title={ventaFiltro==='dia' ? 'Ventas de hoy (Top 10)' : 'Ventas últimos 7 días (Top 10)'} className="tile tight equal-sm">
+                <Table size="small" dataSource={ventasTabla} columns={colsVentas} rowKey={(r,i)=>i} pagination={false}/>
+              </Card>
+            </Col>
+          </Row>
+
+          {/* ADMIN: Estado de compras a ancho completo para no dejar huecos */}
+          <Row gutter={[12,12]} className="grid-gap">
+            <Col xs={24} lg={24}>
+              <Card title="Estado de compras / suministros" className="tile tight equal-sm">
+                <Row gutter={[12,12]}>
+                  <Col xs={24} sm={8}><Card size="small" className="tile tight"><b>Nuevos</b><div style={{fontSize:22}}>{comprasEstado.NUEVO||0}</div></Card></Col>
+                  <Col xs={24} sm={8}><Card size="small" className="tile tight"><b>En uso</b><div style={{fontSize:22}}>{comprasEstado.EN_USO||0}</div></Card></Col>
+                  <Col xs={24} sm={8}><Card size="small" className="tile tight"><b>Completados</b><div style={{fontSize:22}}>{comprasEstado.COMPLETADO||0}</div></Card></Col>
+                </Row>
+                <div style={{ color:'#888', fontSize:12, marginTop:6 }}>* Basado en fechas de inicio/fin de uso de cada lote.</div>
+              </Card>
+            </Col>
+          </Row>
+        </>
+      ) : (
+        <>
+          {/* SUPER_ADMIN: tu distribución actual */}
+          <Row gutter={[12,12]} className="grid-gap">
+            <Col xs={24} lg={12}>
+              <Card title="Productos con bajo stock (Top 5)" className="tile tight equal-sm">
+                <Table size="small" dataSource={lowStock} columns={colsLowStock} rowKey={r=>(r&&r.id!=null)?r.id:r.key} pagination={false}/>
+              </Card>
+            </Col>
+            <Col xs={24} lg={12}>
+              <Card title="Gastos recientes" className="tile tight equal-sm">
+                <Table size="small" dataSource={gastosRecientes} columns={colsGastosRecientes} rowKey={r=>(r&&r.id!=null)?r.id:r.key} pagination={false}/>
+              </Card>
+            </Col>
+          </Row>
+
+          <Row gutter={[12,12]} className="grid-gap">
+            <Col xs={24} lg={12}>
+              <Card title="Próximos cumpleaños (Top 5)" className="tile tight equal-sm">
+                <Table size="small" dataSource={proximosCumples} columns={[
+                  { title:'Empleado', dataIndex:'nombre', key:'nombre' },
+                  { title:'Sucursal', dataIndex:'nombreSucursal', key:'nombreSucursal', width:160 },
+                  { title:'En', dataIndex:'enDias', key:'enDias', width:80, render:v=>(v===0?'Hoy':(v+' días')) }
+                ]} rowKey={(r,i)=>i} pagination={false}/>
+              </Card>
+            </Col>
+            <Col xs={24} lg={12}>
+              <Card title={ventaFiltro==='dia' ? 'Ventas de hoy (Top 10)' : 'Ventas últimos 7 días (Top 10)'} className="tile tight equal-sm">
+                <Table size="small" dataSource={ventasTabla} columns={colsVentas} rowKey={(r,i)=>i} pagination={false}/>
+              </Card>
+            </Col>
+          </Row>
+        </>
+      )}
+    </div>
+  );
+}
 //</script>
