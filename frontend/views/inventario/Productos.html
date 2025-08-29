@@ -1,7 +1,7 @@
 //<script type="text/jsx">
 function Productos() {
   const { useState, useEffect, useMemo, useRef } = React;
-  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, message, Row, Col, Divider, Tooltip, Tag, Collapse } = antd;
+  const { Table, Card, Button, Modal, Form, Input, InputNumber, Select, Space, message, Row, Col, Divider, Tooltip, Tag, Collapse, AutoComplete } = antd;
 
   // ===== Estado general =====
   const [data, setData] = useState([]);
@@ -13,7 +13,9 @@ function Productos() {
   // Modal + formulario
   const [form] = Form.useForm();
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState('create'); // 'create' | 'edit'
+  const [modalMode, setModalMode] = useState('create'); // 'create' | 'edit' | 'duplicate'
+  const [canSubmit, setCanSubmit] = useState(true);     // para bloquear Guardar en 'duplicate'
+  const dupOriginalRef = useRef(null);                  // valores originales para comparar en 'duplicate'
 
   // Eliminar
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -22,6 +24,7 @@ function Productos() {
   // ===== Filtros =====
   const [q, setQ] = useState(''); // buscador global
   const [fSucursal, setFSucursal] = useState(undefined);
+  const [fCategoria, setFCategoria] = useState(undefined); // <-- agregado
   const [fDesde, setFDesde] = useState(''); // yyyy-mm-dd
   const [fHasta, setFHasta] = useState(''); // yyyy-mm-dd
   const [fPrecioMin, setFPrecioMin] = useState(null);
@@ -38,7 +41,7 @@ function Productos() {
 
   useEffect(function(){
     setVisibleCount(batchSize);
-  }, [q, fSucursal, fDesde, fHasta, fPrecioMin, fPrecioMax, fStockMin, fStockMax, data, batchSize]);
+  }, [q, fSucursal, fCategoria, fDesde, fHasta, fPrecioMin, fPrecioMax, fStockMin, fStockMax, data, batchSize]);
 
   // ===== Helpers Precio (L.) =====
   function formatHNL(value) {
@@ -110,6 +113,8 @@ function Productos() {
           var normalizados = arr.map(function (r, i) {
             return Object.assign({}, r, { key: (r && r.id != null ? r.id : i) });
           });
+          // Orden permanente: ID DESC
+          normalizados.sort(function(a,b){ return Number(b.id||0) - Number(a.id||0); });
           setData(normalizados);
         } catch (e) {
           Modal.error({ title: 'Error', content: 'No se pudo leer la respuesta del servidor.' });
@@ -155,9 +160,45 @@ function Productos() {
     return false;
   }
 
+  // Lista de categorías deducidas de los datos (para filtro rápido)
+  const categoriasOptions = useMemo(function(){
+    var set = {};
+    (data || []).forEach(function(r){
+      var c = (r && r.categoria != null ? String(r.categoria) : '').trim();
+      if (c) set[c] = true;
+    });
+    return Object.keys(set).sort().map(function(n){ return { value: n, label: n }; });
+  }, [data]);
+
+  // ====== CATEGORÍAS PARA EL MODAL ======
+  const [categoriasSelect, setCategoriasSelect] = useState([]);
+  const [catOpen, setCatOpen] = useState(false);
+
+  const categoriasFromData = useMemo(function(){
+    var s = {};
+    (data || []).forEach(function(r){
+      var c = (r && r.categoria != null ? String(r.categoria) : '').trim().toUpperCase();
+      if (c) s[c] = true;
+    });
+    return Object.keys(s).sort();
+  }, [data]);
+
+  useEffect(function(){
+    setCategoriasSelect(function(prev){
+      var setx = new Set(prev);
+      categoriasFromData.forEach(function(c){ setx.add(c); });
+      return Array.from(setx).sort();
+    });
+  }, [categoriasFromData]);
+
+  const categoriasSelectOptions = useMemo(function(){
+    return categoriasSelect.map(function(c){ return { value: c, label: c }; });
+  }, [categoriasSelect]);
+
   // ===== Modals =====
   function abrirNuevo() {
     setModalMode('create');
+    setCanSubmit(true);
     cargarSucursales();
     form.resetFields();
     setModalOpen(true);
@@ -165,6 +206,7 @@ function Productos() {
 
   function abrirEditar(rec) {
     setModalMode('edit');
+    setCanSubmit(true);
     cargarSucursales();
     var d = parseFechaFlexible(rec.fechaEntrada);
     var sucPreset = isInSucursalOptions(rec.nombreSucursal) ? rec.nombreSucursal : undefined;
@@ -172,6 +214,7 @@ function Productos() {
     form.setFieldsValue({
       id: rec.id,
       nombreProducto: rec.nombreProducto || '',
+      categoria: (rec.categoria || '').toString().toUpperCase(),
       precio: Number(rec.precio || 0),
       stock: Number(rec.stock || 0),
       fechaEntrada: d ? formatInputDate(d) : '',
@@ -181,16 +224,95 @@ function Productos() {
     setModalOpen(true);
   }
 
+  // NUEVO: abrir "Agregar" (duplicar para otra sucursal)
+  function abrirAgregar(rec) {
+    setModalMode('duplicate');
+    setCanSubmit(false); // bloquear hasta que cambie algo
+    cargarSucursales();
+    var d = parseFechaFlexible(rec.fechaEntrada);
+    var sucPreset = isInSucursalOptions(rec.nombreSucursal) ? rec.nombreSucursal : undefined;
+    var initial = {
+      id: '', // sin ID para que sea nuevo
+      nombreProducto: rec.nombreProducto || '',
+      categoria: (rec.categoria || '').toString().toUpperCase(),
+      precio: Number(rec.precio || 0),
+      stock: Number(rec.stock || 0),
+      fechaEntrada: d ? formatInputDate(d) : '',
+      descripcion: rec.descripcion || '',
+      nombreSucursal: sucPreset
+    };
+    form.setFieldsValue(initial);
+    // guardar originales de los campos que sí se pueden cambiar
+    dupOriginalRef.current = {
+      precio: Number(initial.precio || 0),
+      stock: Number(initial.stock || 0),
+      fechaEntrada: initial.fechaEntrada || '',
+      descripcion: initial.descripcion || '',
+      nombreSucursal: initial.nombreSucursal || ''
+    };
+    setModalOpen(true);
+  }
+
   function abrirEliminar(rec) {
     setToDelete(rec);
     setDeleteOpen(true);
   }
 
-  // ===== Guardar (crear/editar) =====
+  // ===== Tras crear: recargar y subir el creado al inicio =====
+  function cargarNuevo(recienCreado) {
+    setLoading(true);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        try {
+          var arr = JSON.parse(res) || [];
+          var normalizados = arr.map(function (r, i) {
+            return Object.assign({}, r, { key: (r && r.id != null ? r.id : i) });
+          });
+          var ymdNuevo = recienCreado && recienCreado.fechaEntrada ? formatInputDate(parseInputDate(recienCreado.fechaEntrada)) : '';
+          var idx = -1;
+          for (var i = 0; i < normalizados.length; i++) {
+            var r = normalizados[i];
+            var d = parseFechaFlexible(r.fechaEntrada);
+            var ymdR = d ? formatInputDate(d) : '';
+            if (
+              String(r.nombreProducto || '') === String(recienCreado.nombreProducto || '') &&
+              String(r.categoria || '') === String(recienCreado.categoria || '') &&
+              Number(r.precio || 0) === Number(recienCreado.precio || 0) &&
+              Number(r.stock || 0) === Number(recienCreado.stock || 0) &&
+              String(r.descripcion || '') === String(recienCreado.descripcion || '') &&
+              String(r.nombreSucursal || '') === String(recienCreado.nombreSucursal || '') &&
+              String(ymdR || '') === String(ymdNuevo || '')
+            ) { idx = i; break; }
+          }
+          if (idx > -1) {
+            var rec = normalizados[idx];
+            normalizados.splice(idx, 1);
+            normalizados.unshift(rec);
+          } else {
+            normalizados.sort(function(a,b){ return Number(b.id||0) - Number(a.id||0); });
+          }
+          // asegurar orden ID DESC
+          normalizados.sort(function(a,b){ return Number(b.id||0) - Number(a.id||0); });
+          setData(normalizados);
+        } catch (e) {
+          Modal.error({ title: 'Error', content: 'No se pudo leer la respuesta del servidor.' });
+        } finally {
+          setLoading(false);
+        }
+      })
+      .withFailureHandler(function (err) {
+        setLoading(false);
+        Modal.error({ title: 'Error de servidor', content: String((err && err.message) || err) });
+      })
+      .listarProductos();
+  }
+
+  // ===== Guardar (crear/editar/duplicar) =====
   function onSubmit(values) {
     var payload = {
       id: values.id,
       nombreProducto: values.nombreProducto,
+      categoria: values.categoria || '',
       precio: Number(values.precio || 0),
       stock: Number(values.stock || 0),
       fechaEntrada: values.fechaEntrada || '',
@@ -198,17 +320,35 @@ function Productos() {
       nombreSucursal: values.nombreSucursal || ''
     };
 
+    // normalizar categoría a MAYÚSCULAS y actualizar catálogo evitando duplicados
+    payload.categoria = (payload.categoria || '').toString().trim().toUpperCase();
+    if (payload.categoria) {
+      setCategoriasSelect(function(prev){
+        var setx = new Set(prev); setx.add(payload.categoria);
+        return Array.from(setx).sort();
+      });
+    }
+
+    // En modo 'duplicate', bloquear si no hay cambios y forzar creación (sin id)
+    if (modalMode === 'duplicate') {
+      if (!canSubmit) {
+        message.warning('Realice algún cambio (sucursal, fecha, precio, stock o descripción) para poder agregar.');
+        return;
+      }
+      delete payload.id; // asegurar nuevo registro
+    }
+
     setLoading(true);
-    if (modalMode === 'create') {
+    if (modalMode === 'create' || modalMode === 'duplicate') {
       google.script.run
         .withSuccessHandler(function (res) {
           setLoading(false);
           try {
             var r = typeof res === 'string' ? JSON.parse(res) : res;
             if (r && r.ok) {
-              message.success('Producto creado');
+              message.success(modalMode === 'duplicate' ? 'Producto agregado (copia)' : 'Producto creado');
               setModalOpen(false);
-              cargar();
+              cargarNuevo(payload); // poner de primero
             } else {
               Modal.error({ title: 'No se pudo crear', content: (r && r.message) || 'Error desconocido' });
             }
@@ -246,6 +386,21 @@ function Productos() {
     }
   }
 
+  // Track cambios del formulario para habilitar Guardar en 'duplicate'
+  function onFormValuesChange(_, all) {
+    if (modalMode !== 'duplicate') return;
+    var orig = dupOriginalRef.current || {};
+    function nNum(v){ return Number(v||0); }
+    function nStr(v){ return v == null ? '' : String(v); }
+    var changed =
+      nNum(all.precio) !== nNum(orig.precio) ||
+      nNum(all.stock) !== nNum(orig.stock) ||
+      nStr(all.fechaEntrada) !== nStr(orig.fechaEntrada) ||
+      nStr(all.descripcion) !== nStr(orig.descripcion) ||
+      nStr(all.nombreSucursal) !== nStr(orig.nombreSucursal);
+    setCanSubmit(changed);
+  }
+
   // ===== Eliminar =====
   function confirmarEliminar() {
     if (!toDelete) { setDeleteOpen(false); return; }
@@ -259,7 +414,7 @@ function Productos() {
             message.success('Producto eliminado');
             setDeleteOpen(false);
             setToDelete(null);
-            cargar();
+            cargar(); // vuelve ordenado ID DESC
           } else {
             Modal.error({ title: 'No se pudo eliminar', content: (r && r.message) || 'Error desconocido' });
           }
@@ -291,6 +446,7 @@ function Productos() {
         if (t1.indexOf(qnorm) === -1 && t2.indexOf(qnorm) === -1) return false;
       }
       if (fSucursal && r.nombreSucursal !== fSucursal) return false;
+      if (fCategoria && r.categoria !== fCategoria) return false;
 
       if (fDesde || fHasta) {
         var d = parseFechaFlexible(r.fechaEntrada);
@@ -329,8 +485,11 @@ function Productos() {
   // ===== Columnas =====
   const columns = [
     { title: 'No.', dataIndex: 'id', key: 'id', width: 70,
-      sorter: function(a,b){ return String(a.id).localeCompare(String(b.id)); } },
+      sorter: function(a,b){ return Number(a.id||0) - Number(b.id||0); },
+      defaultSortOrder: 'descend'
+    },
     { title: 'Nombre', dataIndex: 'nombreProducto', key: 'nombreProducto' },
+    { title: 'Categoría', dataIndex: 'categoria', key: 'categoria', width: 180 },
     { title: 'Precio Unitario', dataIndex: 'precio', key: 'precio',
       render: function (v) { return formatHNL(v); },
       sorter: function (a, b) { return Number(a.precio || 0) - Number(b.precio || 0); },
@@ -353,12 +512,13 @@ function Productos() {
     },
     { title: 'Descripción', dataIndex: 'descripcion', key: 'descripcion' },
     { title: 'Sucursal', dataIndex: 'nombreSucursal', key: 'nombreSucursal', width: 200 },
-    { title: 'Acciones', key: 'acciones', fixed: 'right', width: 160,
+    { title: 'Acciones', key: 'acciones', fixed: 'right', width: 180,
       render: function(_, record){
         return (
-          <Space>
+          <Space direction="vertical" size={4}>
             <Button size="small" onClick={function(){ abrirEditar(record); }}>Editar</Button>
             <Button size="small" danger onClick={function(){ abrirEliminar(record); }}>Eliminar</Button>
+            <Button size="small" type="dashed" onClick={function(){ abrirAgregar(record); }}>Agregar</Button>
           </Space>
         );
       }
@@ -387,7 +547,6 @@ function Productos() {
     return display;
   }
 
-  // ——— Ajuste visual al estilo Sucursales (mantengo tus íconos/emojis tal cual) ———
   function KPI({ title, value, formatter, icon, accent='#EEF2FF' }){
     const v = useCountUp(value);
     return (
@@ -411,7 +570,6 @@ function Productos() {
     return Math.round((Number(v||0)*100)/t) + '%';
   }
 
-  // --- Donut (modo pastel) ---
   function DonutChart({ data, total, onSelect, title }){
     if (!data || data.length === 0 || total <= 0){
       return <Card bodyStyle={{padding:14}}><div style={{textAlign:'center', color:'#94A3B8'}}>Sin datos</div></Card>;
@@ -477,7 +635,6 @@ function Productos() {
     );
   }
 
-  // --- Lista de barras (Top productos por valor) ---
   function BarList({ data, onSelect, title, hint='Filtrar', icon }){
     const max = data.reduce((a,b)=> Math.max(a, Number(b.value||0)), 0) || 1;
     return (
@@ -514,7 +671,6 @@ function Productos() {
     );
   }
 
-  // --- Sparkline (gráfica temporal) ---
   function Sparkline({ data, days }){
     const W = 340, H = 90, pad = 8;
     const maxY = data.reduce((a,b)=>Math.max(a, b.y), 0) || 1;
@@ -538,7 +694,6 @@ function Productos() {
     );
   }
 
-  // --- Cálculos para los dashboards ---
   const {
     valorPorSucursal, donutSucursal,
     topProductosValor,
@@ -601,7 +756,6 @@ function Productos() {
     return { valorPorSucursal, donutSucursal, topProductosValor, lowStockItems, lowStockCount, entradasSeries, entradasDias };
   }, [filtered, fDesde, fHasta, lowThreshold]);
 
-  // ====== Render ======
   return (
     <div className="productos-wrap">
       <Card
@@ -617,8 +771,6 @@ function Productos() {
           .fade-in { animation: fadeIn .45s ease; }
           @keyframes fadeIn { from { opacity:.0; transform: scale(.98) } to { opacity:1; transform: scale(1) } }
           .bar { will-change: width; }
-
-          /* Título animado (como Sucursales) */
           .prd-hero-title{ position:relative; padding-left:12px; font-weight:800; }
           .prd-spark{
             position:absolute; left:0; top:6px; width:6px; height:22px; border-radius:3px;
@@ -626,13 +778,9 @@ function Productos() {
             animation: prdSpark 2.6s ease-in-out infinite;
           }
           @keyframes prdSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
-
-          /* KPIs estilo “tiles” (igual que Sucursales/Servicios) */
           .prd-kpi{ border-radius:14px; background: linear-gradient(135deg,#e0eaff,#e9fff6); box-shadow: 0 2px 10px rgba(15,23,42,.06); }
           .prd-kpi-sub{ font-size:12px; color:#6b7280 }
           .prd-kpi-val{ font-size:22px; font-weight:800; color:#0f172a }
-
-          /* Tabla pastel + hover sutil (alineado con Sucursales) */
           .productos-wrap .prd-table .ant-table{ border-radius:14px; overflow:hidden; }
           .productos-wrap .prd-table .ant-table-thead > tr > th{
             background:#f8fafc !important; border-bottom:0; color:#334155; font-weight:700;
@@ -648,7 +796,6 @@ function Productos() {
           .productos-wrap .prd-table .ant-table-tbody > tr:nth-child(odd) td{ background:#fcfdff; }
         `}</style>
 
-        {/* === DASHBOARDS ARRIBA (mantengo tus íconos/emojis) === */}
         <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
           <Col xs={24} sm={8}>
             <KPI
@@ -677,7 +824,6 @@ function Productos() {
           </Col>
         </Row>
 
-        {/* === Dashboards adicionales === */}
         <Row gutter={[12,12]} style={{ marginBottom: 8 }}>
           <Col xs={24} md={12}>
             <DonutChart
@@ -726,9 +872,20 @@ function Productos() {
           </Col>
         </Row>
 
-        {/* === COLLAPSE DE FILTROS – justo arriba de la tabla === */}
-        <Collapse defaultActiveKey={['filtros']} style={{ marginBottom: 8 }}>
-          <Collapse.Panel header={<Space><icons.FilterOutlined /> Filtros</Space>} key="filtros">
+        {/* Filtros */}
+        <Collapse defaultActiveKey={[]} style={{ marginBottom: 8 }}>
+          <Collapse.Panel
+            header={<Space><icons.FilterOutlined /> Filtros</Space>}
+            key="filtros"
+            extra={
+              <span onClick={function(e){ e.stopPropagation(); }}>
+                <Space>
+                  <Button onClick={cargar} loading={loading} icon={<icons.ReloadOutlined />}>Refrescar</Button>
+                  <Button type="primary" onClick={abrirNuevo} icon={<icons.PlusOutlined />}>Nuevo</Button>
+                </Space>
+              </span>
+            }
+          >
             <Row gutter={[12, 12]} align="bottom">
               <Col xs={24} md={8}>
                 <label style={{ display: 'block', marginBottom: 4 }}>Buscar (nombre o descripción)</label>
@@ -750,6 +907,19 @@ function Productos() {
                   placeholder="Todas"
                   value={fSucursal}
                   onChange={function(v){ setFSucursal(v); }}
+                  style={{ width: '100%' }}
+                />
+              </Col>
+
+              <Col xs={24} md={8}>
+                <label style={{ display: 'block', marginBottom: 4 }}>Categoría</label>
+                <Select
+                  options={categoriasOptions}
+                  showSearch={false}
+                  allowClear
+                  placeholder="Todas"
+                  value={fCategoria}
+                  onChange={function(v){ setFCategoria(v); }}
                   style={{ width: '100%' }}
                 />
               </Col>
@@ -800,7 +970,7 @@ function Productos() {
               <Col xs={24} md={8}>
                 <Space wrap>
                   <Button onClick={function(){
-                    setQ(''); setFSucursal(undefined);
+                    setQ(''); setFSucursal(undefined); setFCategoria(undefined);
                     setFDesde(''); setFHasta('');
                     setFPrecioMin(null); setFPrecioMax(null);
                     setFStockMin(null); setFStockMax(null);
@@ -808,7 +978,7 @@ function Productos() {
                     Limpiar filtros
                   </Button>
                   <Button type="default" icon={<icons.DownloadOutlined />} onClick={function(){
-                    var headers = ['id','nombreProducto','precio','stock','fechaEntrada','descripcion','nombreSucursal'];
+                    var headers = ['id','nombreProducto','categoria','precio','stock','fechaEntrada','descripcion','nombreSucursal'];
                     var rows = filtered.map(function(r){
                       var d = parseFechaFlexible(r.fechaEntrada);
                       var fecha = d ? formatYMD(d) : '';
@@ -822,6 +992,7 @@ function Productos() {
                       return [
                         esc(r.id),
                         esc(r.nombreProducto),
+                        esc(r.categoria || ''),
                         esc(Number(r.precio || 0).toFixed(2)),
                         esc(r.stock),
                         esc(fecha),
@@ -861,8 +1032,14 @@ function Productos() {
           centered
           title={
             <Space>
-              {modalMode === 'create' ? <icons.PlusOutlined /> : <icons.EditOutlined />}
-              <span>{modalMode === 'create' ? 'Nuevo Producto' : 'Editar Producto'}</span>
+              {modalMode === 'create' ? <icons.PlusOutlined /> :
+               modalMode === 'edit' ? <icons.EditOutlined /> :
+               <icons.PlusOutlined />}
+              <span>
+                {modalMode === 'create' ? 'Nuevo Producto' :
+                 modalMode === 'edit' ? 'Editar Producto' :
+                 'Agregar (copiar a otra sucursal)'}
+              </span>
             </Space>
           }
           open={modalOpen} visible={modalOpen}
@@ -870,8 +1047,9 @@ function Productos() {
           keyboard={false}
           destroyOnClose
           confirmLoading={loading}
-          okText={modalMode === 'create' ? 'Crear' : 'Guardar'}
+          okText={modalMode === 'create' ? 'Crear' : (modalMode === 'edit' ? 'Guardar' : 'Agregar')}
           cancelText="Cancelar"
+          okButtonProps={{ disabled: (modalMode === 'duplicate' && !canSubmit) }}
           onCancel={function(){ setModalOpen(false); }}
           onOk={function(){ form.submit(); }}
           afterOpenChange={function(open){
@@ -883,14 +1061,46 @@ function Productos() {
             }
           }}
         >
-          <Form form={form} layout="vertical" onFinish={onSubmit}>
+          <Form form={form} layout="vertical" onFinish={onSubmit} onValuesChange={onFormValuesChange}>
             <Form.Item name="id" style={{ display: 'none' }}>
               <Input />
             </Form.Item>
 
             <Form.Item label="Nombre" name="nombreProducto"
               rules={[{ required: true, message: 'Ingrese el nombre del producto' }]}>
-              <Input id="nombreProductoInput" placeholder="Ej. Shampoo" autoComplete="off" />
+              <Input
+                id="nombreProductoInput"
+                placeholder="Ej. Shampoo"
+                autoComplete="off"
+                disabled={modalMode === 'duplicate'}  /* bloqueado en duplicado */
+              />
+            </Form.Item>
+
+            {/* Categoría: libre + desplegable (bloqueada en duplicado) */}
+            <Form.Item label="Categoría" name="categoria">
+              <AutoComplete
+                options={categoriasSelectOptions}
+                disabled={modalMode === 'duplicate'}
+                filterOption={function(inputValue, option){
+                  var t = String(option?.value || '').toUpperCase();
+                  return t.indexOf(String(inputValue || '').toUpperCase()) >= 0;
+                }}
+                open={catOpen && modalMode !== 'duplicate'}
+                onFocus={function(){ if(modalMode !== 'duplicate') setCatOpen(true); }}
+                onBlur={function(){ setCatOpen(false); }}
+                onSelect={function(val){ form.setFieldsValue({ categoria: val }); }}
+                onChange={function(val){ form.setFieldsValue({ categoria: (val || '').toString().toUpperCase() }); }}
+              >
+                <Input
+                  placeholder="Ej. SUMINISTROS"
+                  disabled={modalMode === 'duplicate'}
+                  onClick={function(){ if(modalMode !== 'duplicate') setCatOpen(true); }}
+                  onChange={function(e){
+                    var up = (e.target.value || '').toUpperCase();
+                    form.setFieldsValue({ categoria: up });
+                  }}
+                />
+              </AutoComplete>
             </Form.Item>
 
             <Form.Item

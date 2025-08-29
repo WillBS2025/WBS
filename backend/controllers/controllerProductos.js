@@ -1,8 +1,8 @@
-/**
+/** 
  * controllerProductos.js
  * CRUD de Productos sobre la hoja definida en env_().SH_PRODUCTOS
  * Columnas esperadas:
- *   id | nombreProducto | precio | stock | fechaEntrada | descripcion | nombreSucursal
+ *   id | nombreProducto | categoria | precio | stock | fechaEntrada | descripcion | nombreSucursal
  *
  * Requiere helpers existentes:
  *   - env_() -> con SH_PRODUCTOS y SH_SUCURSALES
@@ -14,7 +14,20 @@
 // Nombre de hoja tomado del env (si no existe, usa fallback "productos")
 var SHEET_PRODUCTOS = (env_().SH_PRODUCTOS || "productos");
 
-
+/** Asegura que exista la columna 'categoria' en la hoja de productos (si no, la agrega al final). */
+function ensureProductoCategoriaCol_(sheet) {
+  try {
+    var lastCol = sheet.getLastColumn();
+    if (lastCol < 1) return;
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0] || [];
+    if (headers.indexOf('categoria') === -1) {
+      // Agregar encabezado 'categoria' al final
+      sheet.getRange(1, lastCol + 1).setValue('categoria');
+    }
+  } catch (e) {
+    // Si algo falla, no bloquear el resto del flujo
+  }
+}
 
 /** =========================
  *  LISTAR
@@ -22,6 +35,7 @@ var SHEET_PRODUCTOS = (env_().SH_PRODUCTOS || "productos");
 function listarProductos() {
   try {
     var sheet = obtenerSheet(env_().SH_PRODUCTOS);
+    ensureProductoCategoriaCol_(sheet); // asegura la columna 'categoria'
     var data = _read(sheet) || [];
     return JSON.stringify(data);
   } catch (err) {
@@ -37,6 +51,7 @@ function crearProducto(producto) {
   lock.tryLock(30000);
   try {
     var sheet = obtenerSheet(env_().SH_PRODUCTOS);
+    ensureProductoCategoriaCol_(sheet); // asegura la columna 'categoria'
     var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
 
     var arr = _read(sheet) || [];
@@ -51,6 +66,7 @@ function crearProducto(producto) {
     var rowObj = {
       id: nextId,
       nombreProducto: (producto && producto.nombreProducto) || '',
+      categoria: (producto && producto.categoria) || '', // <-- agregado
       precio: Number((producto && producto.precio) || 0),
       stock: Number((producto && producto.stock) || 0),
       fechaEntrada: parseFechaProducto_(producto && producto.fechaEntrada),
@@ -92,6 +108,7 @@ function actualizarProducto(producto) {
     }
 
     var sheet = obtenerSheet(env_().SH_PRODUCTOS);
+    ensureProductoCategoriaCol_(sheet); // asegura la columna 'categoria'
     var lastRow = sheet.getLastRow();
     if (lastRow < 2) return JSON.stringify({ ok: false, message: 'No hay datos.' });
 
@@ -118,6 +135,7 @@ function actualizarProducto(producto) {
       if (k === 'stock') v = Number(v || 0);
       if (k === 'fechaEntrada') v = parseFechaProducto_(v);
       if (k === 'nombreSucursal') v = suc; // ya validado
+      // k === 'categoria' -> tal cual (string)
       row.push(v == null ? '' : v);
     }
 
