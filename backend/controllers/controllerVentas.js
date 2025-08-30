@@ -83,6 +83,7 @@ function listarDescuentos(){
         estado: (idxEst>=0?row[idxEst]:'Activo') || 'Activo'
       });
     }
+    try{ out.sort(function(a,b){ var ta=(a._createdAt||Date.parse(a.fecha)||0); var tb=(b._createdAt||Date.parse(b.fecha)||0); var d=tb-ta; if(d!==0) return d; return Number(b.id_factura||0)-Number(a.id_factura||0); }); }catch(_){ }
     return JSON.stringify({ ok:true, data: out });
   }catch(err){
     return JSON.stringify({ ok:false, message: 'Error al listar descuentos: ' + err });
@@ -292,6 +293,39 @@ function __V_updateProductoStock__(nombre, sucursal, delta){
   }catch(e){ return false; }
 }
 
+
+/** Devuelve el stock actual (número) de un producto por sucursal. */
+function __V_getProductoStock__(nombre, sucursal){
+  try{
+    var sh = _getSheetProductos_();
+    var head = __V_head__(sh);
+    var m = __V_headerIndexMap__(head);
+    var idxNom = (m['nombreproducto']!=null) ? m['nombreproducto']
+               : (m['nombre']!=null) ? m['nombre']
+               : (m['producto']!=null) ? m['producto']
+               : (m['descripcion']!=null) ? m['descripcion'] : -1;
+    var idxStock = (m['stock']!=null) ? m['stock']
+                 : (m['existencia']!=null) ? m['existencia'] : -1;
+    var idxSuc = (m['nombresucursal']!=null) ? m['nombresucursal']
+               : (m['sucursal']!=null) ? m['sucursal']
+               : (m['nombre_sucursal']!=null) ? m['nombre_sucursal'] : -1;
+    if (idxNom<0 || idxStock<0) return 0;
+    var last = sh.getLastRow();
+    var nom = String(nombre||'').trim();
+    var suc = String(sucursal||'').trim();
+    for (var r=2; r<=last; r++){
+      var row = sh.getRange(r,1,1,head.length).getValues()[0];
+      var n = String(row[idxNom]||'').trim();
+      var s = (idxSuc>=0 ? String(row[idxSuc]||'').trim() : '');
+      if (n === nom && (!suc || (idxSuc<0) || s === suc)){
+        var cur = Number(row[idxStock]||0);
+        return isFinite(cur) ? cur : 0;
+      }
+    }
+    return 0;
+  }catch(e){ return 0; }
+}
+
 /**
  * Devuelve {usuario, sucursal} para el nombre de usuario dado.
  */
@@ -377,6 +411,38 @@ function crearVenta(payload){
     var headF = __V_head__(shF);
     var headD = __V_head__(shD);
     var id = Number(obj.id_factura||0) || __V_nextIdFacturas__();
+
+    // === Validación de stock por producto (bloquea si no hay suficiente) ===
+    try{
+      var req = {};
+      var itemsChk = (obj.items || []);
+      for (var ii=0; ii<itemsChk.length; ii++){
+        var itv = itemsChk[ii] || {};
+        if (String(itv.tipo||'').toLowerCase() === 'producto'){
+          var desc = String(itv.descripcion||'').trim();
+          if (desc){
+            req[desc] = (req[desc]||0) + Number(itv.cantidad||0);
+          }
+        }
+      }
+      var insuf = [];
+      for (var nombreP in req){
+        if (!req.hasOwnProperty(nombreP)) continue;
+        var disp = __V_getProductoStock__(nombreP, __resolveSucursal__(obj.usuario)||obj.sucursal||'');
+        var sol  = Number(req[nombreP]||0);
+        if (!isFinite(disp)) disp = 0;
+        if (disp <= 0){
+          insuf.push({ descripcion: nombreP, solicitado: sol, disponible: 0 });
+        }else if (disp < sol){
+          insuf.push({ descripcion: nombreP, solicitado: sol, disponible: disp });
+        }
+      }
+      if (insuf.length){
+        var code = insuf.some(function(d){ return Number(d.disponible||0) <= 0; }) ? 'AGOTADO' : 'STOCK_INSUF';
+        return JSON.stringify({ ok:false, code: code, message: (code==='AGOTADO' ? 'Producto agotado' : 'Stock insuficiente'), details: insuf });
+      }
+    }catch(_){}
+
 
     function __resolveSucursal__(usuario){
       try{
@@ -578,7 +644,7 @@ function bootstrapVentas(sucursal){
         var nomP = String(p.nombreProducto||p.nombre||p.descripcion||'').trim();
         if (sucursal && sucP && sucP !== sucursal) continue;
         var precio = Number(p.precio || p.precio_venta || p.precioVenta || p.precio_compra || p.costo || 0);
-        out.productos.push({ tipo:'producto', descripcion: nomP, precio: precio });
+        out.productos.push({ tipo:'producto', descripcion: nomP, precio: precio, stock: Number(p.stock||0) });
       }
     }catch(e){}
 

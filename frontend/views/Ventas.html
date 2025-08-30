@@ -54,12 +54,10 @@ function Ventas(){
   const { Table, Card, Button, Modal, Form, InputNumber, Select, Space, Row, Col, message, Tabs, Input, Divider } = antd; /* ← agregado Divider */
   const icons = (window.icons || window.iconsAntd || {});
 
-  // ===== Context & role =====
   const [ctx, setCtx] = useState({ usuario:'', sucursal:'' });
   const [rol] = useState(() => { try { return (localStorage.getItem('userRole') || 'admin'); } catch(_) { return 'admin'; } });
   const isSuper = (String(rol||'').toLowerCase() === 'super_admin');
 
-  // ===== State =====
   const [facturas, setFacturas] = useState([]);
   const [loading, setLoading] = useState(false);
   const [detalle, setDetalle] = useState([]);
@@ -69,14 +67,14 @@ function Ventas(){
   const [sucursales, setSucursales] = useState([]);
   const [empleados, setEmpleados] = useState([]);
 
-  // ===== Nueva venta =====
   const [modalOpen, setModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+
   const [form] = Form.useForm();
   const [lineas, setLineas] = useState([]);
   const [opciones, setOpciones] = useState([]);
   const [cacheItems, setCacheItems] = useState({ servicios:[], productos:[] });
 
-  // Descuentos activos para el modal
   const [descuentosActivos, setDescuentosActivos] = useState([]);
   const [descuentoSel, setDescuentoSel] = useState(null); // id_descuento seleccionado
 
@@ -91,9 +89,7 @@ function Ventas(){
       .withFailureHandler(function(){ setDescuentosActivos([]); })
       .listarDescuentosActivosVenta();
   }
-  
 
-  // ===== Filtrado frontend =====
   const dataFiltrada = useMemo(()=>{
     const list = (facturas||[]).filter(r => {
       if (!isSuper) {
@@ -107,7 +103,6 @@ function Ventas(){
     return list;
   }, [facturas, filters, ctx.sucursal, rol]);
 
-  // ===== Contexto usuario/sucursal =====
   function cargarContexto(){
     var usuarioActual = (window.localStorage && localStorage.getItem('userInfo')) ? (function(){ try{ return JSON.parse(localStorage.getItem('userInfo')).nombre_usuario || ''; }catch(_){ return '' } })() : '';
     google.script.run
@@ -125,7 +120,6 @@ function Ventas(){
       .obtenerContextoVenta(usuarioActual);
   }
 
-  // ===== Loads =====
   function cargarFacturas(){
     setLoading(true);
     google.script.run
@@ -141,6 +135,7 @@ function Ventas(){
             var editable = isSuper ? true : (isFinite(ms) ? (now - ms) < (5*60*1000) : true);
             return Object.assign({}, x, { _editable: editable });
           });
+          norm.sort(function(a,b){return (b._createdAt||0)-(a._createdAt||0) || (Number(b.id_factura||0)-Number(a.id_factura||0));});
           setFacturas(norm);
         }catch(e){
           message.error('Respuesta inválida');
@@ -190,12 +185,10 @@ function Ventas(){
       .bootstrapVentas(String(ctx.sucursal||''));
   }, [ctx.sucursal]);
 
-  // Cargar descuentos activos cuando abro el modal
   useEffect(function(){
     if (modalOpen) cargarDescuentosActivos();
   }, [modalOpen]);
 
-  // Recalcular monto de descuento cuando cambia selección o líneas
   useEffect(function(){
     if (descuentoSel == null) return; // no tocar si no hay selección
     const d = (descuentosActivos||[]).find(x => String(x.id_descuento) === String(descuentoSel));
@@ -204,7 +197,6 @@ function Ventas(){
     form.setFieldsValue({ descuento: Number(sub * factor) });
   }, [lineas, descuentoSel, descuentosActivos]);
 
-  // ===== Detalle =====
   const detCols = [
     { title:'N.', key:'n', width: 60, align:'center', render:(_, __, idx)=> idx+1 },
     { title:'Descripción', dataIndex:'descripcion' },
@@ -233,7 +225,6 @@ function Ventas(){
       .listarDetalleFactura(String(rec.id_factura));
   }
 
-  // ===== Nueva venta =====
   let buscarItemsTimer;
   function buscarItems(q, tipo){
     if (buscarItemsTimer) { clearTimeout(buscarItemsTimer); }
@@ -262,11 +253,15 @@ function Ventas(){
   function rmLinea(idx){ setLineas(prev => prev.filter((_,i)=>i!==idx)); }
   function setLinea(idx, patch){ setLineas(prev => prev.map((ln,i)=> i===idx ? ({...ln, ...patch}) : ln)); }
   const totalVenta = useMemo(()=> (lineas||[]).reduce((acc,ln)=> acc + Number((ln.cantidad||0)*(ln.precio||0)), 0), [lineas]);
+  const faltanDescripcion = useMemo(()=> (lineas||[]).some(ln => !ln.descripcion || String(ln.descripcion).trim()===''), [lineas]);
+  const puedeGuardar = useMemo(()=> (lineas||[]).length>0 && !faltanDescripcion, [lineas, faltanDescripcion]);
 
   function abrirNuevo(){ setModalOpen(true); form.resetFields(); setLineas([]); setEditingId(null); setDescuentoSel(null); }
 
   function guardarVenta(values){
-    if (!lineas.length) { message.warning('Agrega al menos un ítem'); return; }
+    if (!lineas.length) { message.warning('Agrega al menos un ítem'); setSaving(false); return; }
+
+    if ((lineas||[]).some(function(ln){ return !ln.descripcion || String(ln.descripcion).trim()===''; })) { message.error('La descripción es obligatoria en cada línea.'); setSaving(false); return; }
 
     const payloadBase = {
       usuario: ctx.usuario,
@@ -290,6 +285,7 @@ function Ventas(){
     const run = google.script.run
       .withSuccessHandler(function(res){
         hide();
+        setSaving(false);
         try{
           var r = (typeof res==='string') ? JSON.parse(res) : res;
           if (r && r.ok){
@@ -298,7 +294,40 @@ function Ventas(){
             setEditingId(null);
             cargarFacturas();
           }else{
-            Modal.error({ title:'Error', content: (r && r.message) || 'No se pudo guardar' });
+            if (r && (r.code==='AGOTADO' || r.code==='STOCK_INSUF')) {
+              if (r.code==='AGOTADO'){
+                Modal.error({ title:'Producto agotado', content: (r && r.message) || 'Uno o más productos no tienen inventario disponible.' });
+              }else{
+                var dets = (r && r.details) || [];
+                Modal.confirm({
+                  title:'Stock insuficiente',
+                  content: React.createElement('div', {}, 
+                    React.createElement('p', {}, 'Algunos productos no tienen stock suficiente:' ),
+                    React.createElement('ul', {}, dets.map(function(d,i){
+                      var txt = (d.descripcion||'') + ' — solicitado: ' + (d.solicitado||0) + ', disponible: ' + (d.disponible||0);
+                      return React.createElement('li', {key:i}, txt);
+                    }))
+                  ),
+                  okText:'Ajustar cantidades',
+                  cancelText:'Cerrar',
+                  onOk: function(){
+                    setLineas(function(prev){
+                      return (prev||[]).map(function(ln){
+                        var det = dets.find(function(d){ return String(d.descripcion||'')===String(ln.descripcion||''); });
+                        if (det){
+                          var nueva = Math.min(Number(ln.cantidad||0), Number(det.disponible||0));
+                          if (!isFinite(nueva)) nueva = ln.cantidad||0;
+                          return Object.assign({}, ln, { cantidad: nueva });
+                        }
+                        return ln;
+                      });
+                    });
+                  }
+                });
+              }
+            }else{
+              Modal.error({ title:'Error', content: (r && r.message) || 'No se pudo guardar' });
+            }
           }
         }catch(err){
           Modal.error({ title:'Error', content: String(err) });
@@ -449,7 +478,9 @@ function Ventas(){
         visible={modalOpen}
         width={980}
         onCancel={function(){ setModalOpen(false); }}
-        onOk={function(){ form.submit(); }}
+        onOk={function(){ if(!saving){ setSaving(true); form.submit(); } }}
+        confirmLoading={saving}
+        okButtonProps={{ disabled: (saving || !puedeGuardar) }}
         okText="Guardar" cancelText="Cancelar"
         destroyOnClose maskClosable={false} keyboard={false}
       >
@@ -523,7 +554,18 @@ function Ventas(){
                     filterOption={false}
                     onChange={(val, opt)=>{
                       const sel = (opt && opt.item) || {};
-                      setLinea(idx, { descripcion: val, tipo: sel.tipo || rec.tipo, precio: sel.precio || rec.precio });
+                      setLinea(idx, { descripcion: val, tipo: sel.tipo || rec.tipo, precio: sel.precio || rec.precio, stock: Number(sel.stock||0) });
+                      if (String(sel.tipo||'').toLowerCase()==='producto'){
+                        var stk = Number(sel.stock||0);
+                        if (stk <= 0){
+                          Modal.error({ title:'Producto agotado', content:'No hay stock disponible para "'+String(val||'')+'".' });
+                        }else{
+                          var qty = Number(rec && rec.cantidad ? rec.cantidad : 1);
+                          if (qty > stk){
+                            Modal.warning({ title:'Stock insuficiente', content:'Cantidad solicitada ('+qty+') supera al stock disponible ('+stk+'). Puedes disminuir la cantidad o continuar y ajustar al guardar.' });
+                          }
+                        }
+                      }
                     }}
                   >
                     {opciones.filter(it => !rec || !rec.tipo || it.tipo === rec.tipo).map(it => (
@@ -547,6 +589,7 @@ function Ventas(){
             />
           </div>
 
+          <div style={{marginTop:8, color: (faltanDescripcion ? '#a61d24' : '#000')}}>{faltanDescripcion ? 'Complete la descripción en todas las líneas para poder guardar.' : null}</div>
           <div style={{display:'flex', justifyContent:'flex-end', marginTop:8}}>
             <b>Total: {'L.'+Number(totalVenta - Number(form.getFieldValue('descuento')||0)).toLocaleString('es-HN',{minimumFractionDigits:2})}</b>
           </div>
@@ -555,7 +598,6 @@ function Ventas(){
     </Card>
   );
 
-  // ===== Tab Descuentos =====
   const [tabKey, setTabKey] = useState('ventas');
   const [descuentos, setDescuentos] = useState([]);
   const [loadingDes, setLoadingDes] = useState(false);
@@ -712,7 +754,7 @@ function Ventas(){
       </Card>
     );
   }
-  // Datos parseados + cortes de tiempo
+
   const hoy = startOfDay(new Date());
   const facturasParsed = (facturas||[]).map(r => ({ ...r, _fecha: parseFechaFlexible(r.fecha || r.Fecha || r._createdAt) }));
   const facturasHoy = facturasParsed.filter(r => r._fecha && sameDay(r._fecha, hoy));
@@ -720,7 +762,6 @@ function Ventas(){
   const ingresosHoy = facturasHoy.reduce((a,r)=> a + getTotalFactura(r), 0);
   const empleadosActivosHoy = new Set(facturasHoy.map(r => r.empleado || '(sin asignar)')).size;
 
-  // Diario por empleado (hoy)
   const mapaDiario = {};
   facturasHoy.forEach(r => {
     var emp = r.empleado || '(sin asignar)';
@@ -731,7 +772,6 @@ function Ventas(){
   const diarioRows = Object.values(mapaDiario).sort((a,b)=> b.conteo - a.conteo);
   const maxDiario = Math.max(1, ...diarioRows.map(r=>r.conteo));
 
-  // Semanal (últimos 7 días - equipo completo)
   const semanaRows = Array.from({length:7}).map((_,i)=>{
     const d = addDays(hoy, i-6); // de hace 6 días a hoy
     const registros = facturasParsed.filter(r => r._fecha && sameDay(startOfDay(r._fecha), d));

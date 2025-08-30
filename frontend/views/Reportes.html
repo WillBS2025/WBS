@@ -1,12 +1,108 @@
-//<script type="text/jsx">
+<style>
+  .page-title{font-weight:600;font-size:16px;margin-bottom:12px}
+</style>
 
-function Reportes() {
+<div id="ReportesView"></div>
+
+<script type="text/babel">
+  const { useState, useEffect, useMemo } = React;
+  const { Tabs, Table, Card, message, Button } = antd;
+
+  function Reportes(){
+    const [loadingVentas, setLoadingVentas] = useState(false);
+    const [ventas, setVentas] = useState([]);
+    const [activeKey, setActiveKey] = useState('ventas');
+
+    function fromCache(){
+      try{
+        const raw = sessionStorage.getItem('repVentas');
+        if (raw){
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) setVentas(arr);
+        }
+      }catch(e){}
+    }
+
+    function fetchVentas(){
+      setLoadingVentas(true);
+      try{
+        if (google && google.script && google.script.run){
+          google.script.run
+            .withSuccessHandler(function(res){
+              try{
+                const r = (typeof res === 'string') ? JSON.parse(res) : res;
+                if (r && r.ok && Array.isArray(r.data)){
+                  sessionStorage.setItem('repVentas', JSON.stringify(r.data));
+                  setVentas(r.data);
+                } else {
+                  message.warning('No se encontraron registros.');
+                }
+              }catch(e){
+                console && console.error && console.error(e);
+              }
+              setLoadingVentas(false);
+            })
+            .withFailureHandler(function(err){
+              setLoadingVentas(false);
+              message.error(String((err && err.message) || err || 'Error al cargar'));
+            })
+            .bootstrapReportesVentas();
+        } else {
+          setLoadingVentas(false);
+        }
+      }catch(e){
+        setLoadingVentas(false);
+      }
+    }
+
+    useEffect(function(){
+      fromCache();
+      const hasCache = !!sessionStorage.getItem('repVentas');
+      if (!hasCache){
+        fetchVentas();
+      } else {
+        setTimeout(fetchVentas, 120);
+      }
+    }, []);
+
+    const colsVentas = useMemo(function(){
+      return [
+        { title:'N.', dataIndex:'n', key:'n', width:80, align:'center', sorter:function(a,b){return Number(a.n||0)-Number(b.n||0);} },
+        { title:'Descripción', dataIndex:'descripcion', key:'descripcion', ellipsis:true },
+        { title:'Cant.', dataIndex:'cantidad', key:'cantidad', width:90, align:'right' },
+        { title:'Precio', dataIndex:'precio', key:'precio', width:110, align:'right', render:function(v){ return 'L.'+Number(v||0).toFixed(2); } },
+        { title:'Total línea', dataIndex:'total_linea', key:'total_linea', width:130, align:'right', render:function(v){ return 'L.'+Number(v||0).toFixed(2); } },
+        { title:'Método de pago', dataIndex:'metodo_pago', key:'metodo_pago', width:160 }
+      ];
+    }, []);
+
     return (
-        <div>
-            <h2>Sección de Reportes</h2>
-            <p>Aquí puedes ver los reportes y estadísticas.</p>
-        </div>
+      <div>
+        <div className="page-title">Reportes</div>
+        <Tabs activeKey={activeKey} onChange={setActiveKey}>
+          <Tabs.TabPane tab="Reporte de ventas" key="ventas">
+            <Card
+              size="small"
+              extra={<Button onClick={fetchVentas}>Refrescar</Button>}
+            >
+              <Table
+                size="middle"
+                rowKey={function(_,i){ return 'rv-'+i; }}
+                columns={colsVentas}
+                dataSource={ventas}
+                loading={loadingVentas}
+                pagination={{ pageSize: 10, showSizeChanger:true }}
+                scroll={{ x: 800 }}
+              />
+            </Card>
+          </Tabs.TabPane>
+          <Tabs.TabPane tab="Reporte de gastos" key="gastos">
+            <Card size="small">Próximamente</Card>
+          </Tabs.TabPane>
+        </Tabs>
+      </div>
     );
-}
+  }
 
-//</script>
+  ReactDOM.render(<Reportes />, document.getElementById('ReportesView'));
+</script>
