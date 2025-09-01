@@ -6,13 +6,26 @@
 
 <script type="text/babel">
   const { useState, useEffect, useMemo, useRef } = React;
-  const { Tabs, Table, Card, message, Button, Row, Col, Input, Select, Statistic, Space, Tag } = antd;
+  const { Tabs, Table, Card, message, Button, Row, Col, Input, Select, Statistic, Space, Tag, Collapse } = antd;
 
   function Reportes(){
-    // ===== Ventas (existente) =====
+    // ===== Ventas =====
     const [loadingVentas, setLoadingVentas] = useState(false);
     const [ventas, setVentas] = useState([]);
     const [activeKey, setActiveKey] = useState('ventas');
+
+    const mountedRef = useRef(false);
+    const debounceRef = useRef({});
+    const timersRef = useRef([]);
+
+    useEffect(() => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+        try{ Object.values(debounceRef.current || {}).forEach(id => clearTimeout(id)); }catch(e){}
+        try{ (timersRef.current || []).forEach(id => clearTimeout(id)); }catch(e){}
+      };
+    }, []);
 
     function fromCache(){
       try{
@@ -23,13 +36,13 @@
         }
       }catch(e){}
     }
-
     function fetchVentas(){
       setLoadingVentas(true);
       try{
         if (google && google.script && google.script.run){
           google.script.run
             .withSuccessHandler(function(res){
+              if (!mountedRef.current) return;
               try{
                 const r = (typeof res === 'string') ? JSON.parse(res) : res;
                 if (r && r.ok && Array.isArray(r.data)){
@@ -38,60 +51,53 @@
                 } else {
                   message.warning('No se encontraron registros.');
                 }
-              }catch(e){
-                console && console.error && console.error(e);
-              }
+              }catch(e){}
               setLoadingVentas(false);
             })
             .withFailureHandler(function(err){
+              if (!mountedRef.current) return;
               setLoadingVentas(false);
               message.error(String((err && err.message) || err || 'Error al cargar'));
             })
             .bootstrapReportesVentas();
-        } else {
-          setLoadingVentas(false);
-        }
-      }catch(e){
-        setLoadingVentas(false);
-      }
+        } else { setLoadingVentas(false); }
+      }catch(e){ setLoadingVentas(false); }
     }
 
-    // ===== Gastos (con mejoras) =====
+    // ===== Gastos =====
     const [loadingGastos, setLoadingGastos] = useState(false);
     const [gastos, setGastos] = useState([]);
     const [resumenG, setResumenG] = useState(null);
     const [sucursales, setSucursales] = useState([]);
+    const [usuarioActual, setUsuarioActual] = useState('N/D');
 
     const yearNow = new Date().getFullYear();
-    const monthNow = new Date().getMonth() + 1; // 1..12
+    const monthNow = new Date().getMonth() + 1;
 
     const [filtrosG, setFiltrosG] = useState({
-      periodo: 'anual',      // 'anual' | 'mensual' | 'quincenal' | 'semanal' | 'diario'
+      periodo: 'anual',
       anio: yearNow,
-      mes: monthNow,         // mensual/quincenal
-      quincena: 1,           // 1 o 2
-      fechaRef: new Date().toISOString().slice(0,10), // semanal/diario (YYYY-MM-DD)
+      mes: monthNow,
+      quincena: 1,
+      fechaRef: new Date().toISOString().slice(0,10),
       nombreSucursal: '',
       q: ''
     });
 
+    const [tituloBarberia, setTituloBarberia] = useState('Barbería');
+
     const currency = (n) => {
       try{
         return 'L.' + new Intl.NumberFormat('es-HN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n||0));
-      }catch(e){
-        return 'L.' + Number(n||0).toFixed(2);
-      }
+      }catch(e){ return 'L.' + Number(n||0).toFixed(2); }
     };
 
-    // ==== Helpers periodo ====
-    function endOfMonth(y, m){ return new Date(y, m, 0).getDate(); } // m 1..12
+    function endOfMonth(y, m){ return new Date(y, m, 0).getDate(); }
     function ymd(d){
       const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0');
       return `${y}-${m}-${dd}`;
     }
 
-    // Debounce para autorefresh
-    const debounceRef = useRef({});
     function debouncedFetch(key, overrides, delay=350){
       try{
         if (debounceRef.current[key]) clearTimeout(debounceRef.current[key]);
@@ -99,134 +105,133 @@
       }catch(e){}
     }
 
-    // Construye payload para el backend (acepta overrides)
+    function resetFiltros(){
+      const defaults = {
+        periodo: 'anual',
+        anio: new Date().getFullYear(),
+        mes: (new Date().getMonth()+1),
+        quincena: 1,
+        fechaRef: new Date().toISOString().slice(0,10),
+        nombreSucursal: '',
+        q: ''
+      };
+      setFiltrosG(defaults);
+      fetchGastos(defaults);
+    }
+
     function buildFiltrosG(overrides){
       const F = { ...filtrosG, ...(overrides||{}) };
       const p = F.periodo || 'anual';
-      const out = {
-        nombreSucursal: F.nombreSucursal || '',
-        q: F.q || ''
-      };
+      const out = { nombreSucursal: F.nombreSucursal || '', q: F.q || '' };
       const y = Number(F.anio || 0) || new Date().getFullYear();
 
-      if (p === 'anual'){
-        out.anio = y;
-      } else if (p === 'mensual'){
-        const m = Number(F.mes||0) || monthNow;
-        out.anio = y;
-        out.mes = m;
-      } else if (p === 'quincenal'){
-        const m = Number(F.mes||0) || monthNow;
-        const q = Number(F.quincena||1)===2 ? 2 : 1;
+      if (p === 'anual'){ out.anio = y; }
+      else if (p === 'mensual'){ const m = Number(F.mes||0) || monthNow; out.anio = y; out.mes = m; }
+      else if (p === 'quincenal'){
+        const m = Number(F.mes||0) || monthNow; const q = Number(F.quincena||1)===2 ? 2 : 1;
         const start = new Date(y, m-1, q===1?1:16, 0,0,0);
         const endDay = q===1 ? 15 : endOfMonth(y, m);
         const end = new Date(y, m-1, endDay, 23,59,59);
-        out.desde = ymd(start);
-        out.hasta = ymd(end);
+        out.desde = ymd(start); out.hasta = ymd(end);
       } else if (p === 'semanal'){
         const ref = F.fechaRef ? new Date(F.fechaRef) : new Date();
         const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
-        const day = d.getDay(); // 0..6
-        const diffToMon = (day === 0 ? -6 : 1 - day);
+        const day = d.getDay(); const diffToMon = (day === 0 ? -6 : 1 - day);
         const mon = new Date(d); mon.setDate(d.getDate() + diffToMon);
         const sun = new Date(mon); sun.setDate(mon.getDate() + 6); sun.setHours(23,59,59,0);
-        out.desde = ymd(mon);
-        out.hasta = ymd(sun);
+        out.desde = ymd(mon); out.hasta = ymd(sun);
       } else if (p === 'diario'){
         const ref = F.fechaRef ? new Date(F.fechaRef) : new Date();
         const start = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0,0,0);
         const end = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 23,59,59);
-        out.desde = ymd(start);
-        out.hasta = ymd(end);
+        out.desde = ymd(start); out.hasta = ymd(end);
       }
       return out;
     }
 
-    // ====== Sucursales robusto (3 fuentes) ======
     function fetchSucursales(){
       function setSucursalNames(names){
         try{
           const arr = Array.from(new Set((names || []).filter(Boolean)))
             .sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
-          if (arr.length) setSucursales(arr);
+          if (arr.length && mountedRef.current) setSucursales(arr);
         }catch(e){}
       }
-
       try{
         if (google && google.script && google.script.run){
-          // 1) Preferido: directo desde hoja de Gastos
           google.script.run
             .withSuccessHandler(function(res){
+              if (!mountedRef.current) return;
               try{
                 const r = (typeof res === 'string') ? JSON.parse(res) : res;
                 let names = [];
                 if (r && r.ok && Array.isArray(r.sucursales)){
-                  if (typeof r.sucursales[0] === 'string'){
-                    names = r.sucursales;
-                  } else {
-                    names = r.sucursales.map(x => x && (x.nombreSucursal || x.sucursal || x.Sucursal)).filter(Boolean);
-                  }
+                  if (typeof r.sucursales[0] === 'string'){ names = r.sucursales; }
+                  else { names = r.sucursales.map(x => x && (x.nombreSucursal || x.sucursal || x.Sucursal)).filter(Boolean); }
                 }
                 setSucursalNames(names);
-
-                // 2) Fallback si vacío: Activas
                 if (!names || !names.length){
-                  try{
-                    google.script.run
-                      .withSuccessHandler(function(res2){
-                        try{
-                          const r2 = (typeof res2 === 'string') ? JSON.parse(res2) : res2;
-                          let names2 = [];
-                          if (r2 && r2.ok && Array.isArray(r2.sucursales)){
-                            if (typeof r2.sucursales[0] === 'string'){
-                              names2 = r2.sucursales;
-                            } else {
-                              names2 = r2.sucursales.map(s => s && (s.nombreSucursal || s.sucursal || s.Sucursal)).filter(Boolean);
-                            }
-                          }
-                          setSucursalNames(names2);
-
-                          // 3) Último recurso: derivar de gastos/cache
-                          if (!names2 || !names2.length){
-                            try{
-                              const raw = sessionStorage.getItem('repGastos');
-                              const obj = raw ? JSON.parse(raw) : null;
-                              const list = (obj && Array.isArray(obj.list)) ? obj.list : (Array.isArray(gastos) ? gastos : []);
-                              const derivadas = Array.from(new Set((list || []).map(g => g && g.nombreSucursal).filter(Boolean)));
-                              setSucursalNames(derivadas);
-                            }catch(e){}
-                          }
-                        }catch(e){}
-                      })
-                      .withFailureHandler(function(err){ /* silencioso */ })
-                      .listarSucursalesActivas();
-                  }catch(e){}
+                  google.script.run
+                    .withSuccessHandler(function(res2){
+                      if (!mountedRef.current) return;
+                      try{
+                        const r2 = (typeof res2 === 'string') ? JSON.parse(res2) : res2;
+                        let names2 = [];
+                        if (r2 && r2.ok && Array.isArray(r2.sucursales)){
+                          if (typeof r2.sucursales[0] === 'string'){ names2 = r2.sucursales; }
+                          else { names2 = r2.sucursales.map(s => s && (s.nombreSucursal || s.sucursal || s.Sucursal)).filter(Boolean); }
+                        }
+                        setSucursalNames(names2);
+                        if ((!names2 || !names2.length) && mountedRef.current){
+                          const raw = sessionStorage.getItem('repGastos');
+                          const obj = raw ? JSON.parse(raw) : null;
+                          const list = (obj && Array.isArray(obj.list)) ? obj.list : (Array.isArray(gastos) ? gastos : []);
+                          const derivadas = Array.from(new Set((list || []).map(g => g && g.nombreSucursal).filter(Boolean)));
+                          setSucursalNames(derivadas);
+                        }
+                      }catch(e){}
+                    })
+                    .withFailureHandler(function(err){})
+                    .listarSucursalesActivas();
                 }
               }catch(e){}
             })
             .withFailureHandler(function(err){
-              // Si falla el nuevo endpoint, probar Activas
+              if (!mountedRef.current) return;
+              google.script.run
+                .withSuccessHandler(function(res2){
+                  if (!mountedRef.current) return;
+                  try{
+                    const r2 = (typeof res2 === 'string') ? JSON.parse(res2) : res2;
+                    let names2 = [];
+                    if (r2 && r2.ok && Array.isArray(r2.sucursales)){
+                      if (typeof r2.sucursales[0] === 'string'){ names2 = r2.sucursales; }
+                      else { names2 = r2.sucursales.map(s => s && (s.nombreSucursal || s.sucursal || s.Sucursal)).filter(Boolean); }
+                    }
+                    setSucursalNames(names2);
+                  }catch(e){}
+                })
+                .withFailureHandler(function(err2){})
+                .listarSucursalesActivas();
+            })
+            .listarSucursalesGastos();
+        }
+      }catch(e){}
+    }
+
+    function fetchUsuarioActual(){
+      try{
+        if (google && google.script && google.script.run){
+          google.script.run
+            .withSuccessHandler(function(res){
+              if (!mountedRef.current) return;
               try{
-                google.script.run
-                  .withSuccessHandler(function(res2){
-                    try{
-                      const r2 = (typeof res2 === 'string') ? JSON.parse(res2) : res2;
-                      let names2 = [];
-                      if (r2 && r2.ok && Array.isArray(r2.sucursales)){
-                        if (typeof r2.sucursales[0] === 'string'){
-                          names2 = r2.sucursales;
-                        } else {
-                          names2 = r2.sucursales.map(s => s && (s.nombreSucursal || s.sucursal || s.Sucursal)).filter(Boolean);
-                        }
-                      }
-                      setSucursalNames(names2);
-                    }catch(e){}
-                  })
-                  .withFailureHandler(function(err2){ /* silencioso */ })
-                  .listarSucursalesActivas();
+                const r = (typeof res === 'string') ? JSON.parse(res) : res;
+                if (r && r.ok) setUsuarioActual(r.email || 'N/D');
               }catch(e){}
             })
-            .listarSucursalesGastos(); // NUEVO endpoint
+            .withFailureHandler(function(err){})
+            .obtenerUsuarioActual();
         }
       }catch(e){}
     }
@@ -242,11 +247,8 @@
         }
       }catch(e){}
     }
-
     function saveCacheG(list, resumen){
-      try{
-        sessionStorage.setItem('repGastos', JSON.stringify({ list, resumen }));
-      }catch(e){}
+      try{ sessionStorage.setItem('repGastos', JSON.stringify({ list, resumen })); }catch(e){}
     }
 
     function fetchGastos(overrides){
@@ -256,6 +258,7 @@
           const payload = buildFiltrosG(overrides);
           google.script.run
             .withSuccessHandler(function(res){
+              if (!mountedRef.current) return;
               setLoadingGastos(false);
               try{
                 const r = (typeof res === 'string') ? JSON.parse(res) : res;
@@ -265,45 +268,69 @@
                   saveCacheG(r.data.list, r.data.resumen || null);
                 } else {
                   message.info('Sin datos para los filtros seleccionados.');
-                  setGastos([]);
-                  setResumenG(null);
-                  saveCacheG([], null);
+                  setGastos([]); setResumenG(null); saveCacheG([], null);
                 }
-              }catch(e){
-                console && console.error && console.error(e);
-              }
+              }catch(e){}
             })
             .withFailureHandler(function(err){
+              if (!mountedRef.current) return;
               setLoadingGastos(false);
               message.error(String((err && err.message) || err || 'Error al cargar gastos'));
             })
             .bootstrapReportesGastos(payload);
-        } else {
-          setLoadingGastos(false);
+        } else { setLoadingGastos(false); }
+      }catch(e){ setLoadingGastos(false); }
+    }
+
+    // Descargar PDF (LITE)
+    function handleDownloadPDF(){
+      try{
+        if (google && google.script && google.script.run){
+          const filtros = buildFiltrosG();
+          const meta = { tituloBarberia, usuario: usuarioActual }; // sin logoUrl
+          google.script.run
+            .withSuccessHandler(function(res){
+              if (!mountedRef.current) return;
+              try{
+                const r = (typeof res === 'string') ? JSON.parse(res) : res;
+                if (!r || !r.ok){ message.error((r && r.message) || 'No se pudo generar el PDF'); return; }
+                if (r.base64){
+                  const url = 'data:application/pdf;base64,' + r.base64;
+                  fetch(url).then(x=>x.blob()).then(blob=>{
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `Reporte_Gastos.pdf`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  });
+                } else if (r.fileUrl){
+                  window.open(r.fileUrl, '_blank');
+                }
+                message.success('PDF generado correctamente.');
+              }catch(e){ message.error('Error al procesar PDF'); }
+            })
+            .withFailureHandler(function(err){
+              if (!mountedRef.current) return;
+              message.error('Error al generar PDF');
+            })
+            .generarReporteGastosPDF_Lite(filtros, meta);
         }
-      }catch(e){
-        setLoadingGastos(false);
-      }
+      }catch(e){}
     }
 
     // Cargas iniciales
     useEffect(function(){
-      // Ventas
       fromCache();
       const hasCache = !!sessionStorage.getItem('repVentas');
-      if (!hasCache){
-        fetchVentas();
-      } else {
-        setTimeout(fetchVentas, 120);
-      }
+      if (!hasCache){ fetchVentas(); }
+      else { const id = setTimeout(fetchVentas, 120); timersRef.current.push(id); }
 
-      // Gastos
       fetchSucursales();
       fromCacheG();
-      fetchGastos(); // auto carga
+      fetchGastos();
+      fetchUsuarioActual();
     }, []);
 
-    // Red de seguridad: si no hay sucursales, derivarlas de gastos cargados
     useEffect(function(){
       if (!sucursales.length && Array.isArray(gastos) && gastos.length){
         const names = Array.from(new Set(gastos.map(g => g && g.nombreSucursal).filter(Boolean)))
@@ -312,6 +339,7 @@
       }
     }, [gastos]);
 
+    // ===== Columnas =====
     const colsVentas = useMemo(function(){
       return [
         { title:'N.', dataIndex:'n', key:'n', width:80, align:'center', sorter:function(a,b){return Number(a.n||0)-Number(b.n||0);} },
@@ -325,16 +353,13 @@
 
     const colsGastos = useMemo(() => ([
       { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 110 },
-      { title: 'Categoría', dataIndex: 'categoria', key: 'categoria', width: 140,
-        render: (v) => v ? <Tag>{v}</Tag> : '-' },
+      { title: 'Categoría', dataIndex: 'categoria', key: 'categoria', width: 140, render: (v) => v ? <Tag>{v}</Tag> : '-' },
       { title: 'Descripción', dataIndex: 'descripcion', key: 'descripcion' },
-      { title: 'Monto', dataIndex: 'monto', key: 'monto', align: 'right', width: 120,
-        render: (v) => <strong>{currency(v)}</strong> },
+      { title: 'Monto', dataIndex: 'monto', key: 'monto', align: 'right', width: 120, render: (v) => <strong>{currency(v)}</strong> },
       { title: 'Método de pago', dataIndex: 'metodoPago', key: 'metodoPago', width: 140 },
       { title: 'Proveedor', dataIndex: 'proveedor', key: 'proveedor', width: 160 },
       { title: 'Sucursal', dataIndex: 'nombreSucursal', key: 'nombreSucursal', width: 140 },
-      { title: 'Comprobante', dataIndex: 'comprobanteURL', key: 'comprobanteURL', width: 120,
-        render: (v) => v ? <a href={v} target="_blank" rel="noreferrer">Ver</a> : '-' },
+      { title: 'Comprobante', dataIndex: 'comprobanteURL', key: 'comprobanteURL', width: 120, render: (v) => v ? <a href={v} target="_blank" rel="noreferrer">Ver</a> : '-' },
     ]), []);
 
     const KPIsG = useMemo(() => {
@@ -369,10 +394,7 @@
         <Tabs activeKey={activeKey} onChange={setActiveKey}>
           {/* ===== Tab Ventas ===== */}
           <Tabs.TabPane tab="Reporte de ventas" key="ventas">
-            <Card
-              size="small"
-              extra={<Button onClick={fetchVentas}>Refrescar</Button>}
-            >
+            <Card size="small" extra={<Button onClick={fetchVentas}>Refrescar</Button>}>
               <Table
                 size="middle"
                 rowKey={function(_,i){ return 'rv-'+i; }}
@@ -387,155 +409,8 @@
 
           {/* ===== Tab Gastos ===== */}
           <Tabs.TabPane tab="Reporte de gastos" key="gastos">
-            <Card size="small" style={{ marginBottom: 12 }}>
-              <Row gutter={[12,12]} align="middle">
-                <Col xs={24} md={6}>
-                  <label>Periodo</label>
-                  <Select
-                    style={{ width:'100%' }}
-                    value={filtrosG.periodo}
-                    onChange={(v)=>{
-                      setFiltrosG(prev => ({ ...prev, periodo: v }));
-                      debouncedFetch('periodo', { periodo: v }, 250);
-                    }}
-                    options={periodOptions}
-                  />
-                </Col>
-
-                <Col xs={24} md={6}>
-                  <label>Año</label>
-                  <Input
-                    type="number"
-                    value={filtrosG.anio}
-                    min={2000}
-                    max={2100}
-                    onChange={(e)=>{
-                      const val = Number(e.target.value||0);
-                      setFiltrosG(prev => ({ ...prev, anio: val }));
-                      debouncedFetch('anio', { anio: val }, 350);
-                    }}
-                    onPressEnter={()=>fetchGastos()}
-                  />
-                </Col>
-
-                {showMes && (
-                  <Col xs={24} md={6}>
-                    <label>Mes</label>
-                    <Select
-                      style={{ width:'100%' }}
-                      value={filtrosG.mes}
-                      onChange={(v)=>{
-                        const val = Number(v);
-                        setFiltrosG(prev => ({ ...prev, mes: val }));
-                        debouncedFetch('mes', { mes: val }, 250);
-                      }}
-                      options={monthOptions}
-                    />
-                  </Col>
-                )}
-
-                {showQuincena && (
-                  <Col xs={24} md={6}>
-                    <label>Quincena</label>
-                    <Select
-                      style={{ width:'100%' }}
-                      value={filtrosG.quincena}
-                      onChange={(v)=>{
-                        const val = Number(v);
-                        setFiltrosG(prev => ({ ...prev, quincena: val }));
-                        debouncedFetch('quincena', { quincena: val }, 250);
-                      }}
-                      options={[
-                        { label:'1 (1–15)', value:1 },
-                        { label:'2 (16–fin de mes)', value:2 },
-                      ]}
-                    />
-                  </Col>
-                )}
-
-                {showFechaRef && (
-                  <Col xs={24} md={6}>
-                    <label>Fecha</label>
-                    <Input
-                      type="date"
-                      value={filtrosG.fechaRef}
-                      onChange={(e)=>{
-                        const val = e.target.value;
-                        setFiltrosG(prev => ({ ...prev, fechaRef: val }));
-                        debouncedFetch('fechaRef', { fechaRef: val }, 300);
-                      }}
-                      onPressEnter={()=>fetchGastos()}
-                    />
-                  </Col>
-                )}
-
-                <Col xs={24} md={8}>
-                  <label>Sucursal</label>
-                  <Select
-                    allowClear
-                    style={{ width:'100%' }}
-                    placeholder="(todas)"
-                    value={filtrosG.nombreSucursal || undefined}
-                    onChange={(v)=>{
-                      const val = v || '';
-                      setFiltrosG(prev => ({ ...prev, nombreSucursal: val }));
-                      // aplica automáticamente
-                      debouncedFetch('sucursal', { nombreSucursal: val }, 200);
-                    }}
-                    options={[
-                      { label: '(todas)', value: '' },
-                      ...sucursales.map(s => ({ label: s, value: s }))
-                    ]}
-                  />
-                </Col>
-
-                <Col xs={24} md={10}>
-                  <label>Buscar</label>
-                  <Input
-                    placeholder="categoría, proveedor, método, descripción…"
-                    value={filtrosG.q}
-                    onChange={(e)=>{
-                      const val = e.target.value;
-                      setFiltrosG(prev => ({ ...prev, q: val }));
-                      debouncedFetch('q', { q: val }, 500);
-                    }}
-                    onPressEnter={()=>fetchGastos()}
-                  />
-                </Col>
-
-                <Col xs={24}>
-                  <Space>
-                    <Button type="primary" onClick={()=>fetchGastos()} loading={loadingGastos}>
-                      Actualizar
-                    </Button>
-                    <Button
-                      onClick={()=>{
-                        const rows = gastos || [];
-                        if (!rows.length){ message.info('No hay datos para exportar'); return; }
-                        const cols = ['id','fecha','categoria','descripcion','monto','metodoPago','proveedor','nombreSucursal','comprobanteURL'];
-                        const csv = [cols.join(',')].concat(
-                          rows.map(r => cols.map(k=>{
-                            const val = (r[k]==null? '' : String(r[k]).replace(/"/g,'""'));
-                            return `"${val}"`;
-                          }).join(','))
-                        ).join('\n');
-                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `reporte_gastos_${filtrosG.periodo}_${filtrosG.anio||'all'}.csv`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}
-                    >
-                      Exportar CSV
-                    </Button>
-                  </Space>
-                </Col>
-              </Row>
-            </Card>
-
-            <Row gutter={[12,12]}>
+            {/* KPIs */}
+            <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
               {KPIsG.map(k => (
                 <Col xs={24} md={8} key={k.label}>
                   <Card size="small">
@@ -545,7 +420,129 @@
               ))}
             </Row>
 
-            <Card size="small" style={{ marginTop: 12 }}>
+            {/* FILTROS (colapsados por defecto) */}
+            <Collapse defaultActiveKey={[]} style={{ marginBottom: 12 }}>
+              <Collapse.Panel
+                header="Filtros"
+                key="filtros"
+                extra={
+                  <Button onClick={handleDownloadPDF}>Descargar PDF</Button>
+                }
+              >
+                <Card size="small">
+                  <Row gutter={[12,12]} align="middle">
+                    <Col xs={24} md={6}>
+                      <label>Periodo</label>
+                      <Select
+                        style={{ width:'100%' }}
+                        value={filtrosG.periodo}
+                        onChange={(v)=>{ setFiltrosG(prev=>({...prev, periodo:v})); debouncedFetch('periodo',{periodo:v},250); }}
+                        options={periodOptions}
+                      />
+                    </Col>
+                    <Col xs={24} md={6}>
+                      <label>Año</label>
+                      <Input
+                        type="number"
+                        value={filtrosG.anio}
+                        min={2000} max={2100}
+                        onChange={(e)=>{ const val=Number(e.target.value||0); setFiltrosG(p=>({...p,anio:val})); debouncedFetch('anio',{anio:val},350); }}
+                        onPressEnter={()=>fetchGastos()}
+                      />
+                    </Col>
+
+                    {showMes && (
+                      <Col xs={24} md={6}>
+                        <label>Mes</label>
+                        <Select
+                          style={{ width:'100%' }}
+                          value={filtrosG.mes}
+                          onChange={(v)=>{ const val=Number(v); setFiltrosG(p=>({...p,mes:val})); debouncedFetch('mes',{mes:val},250); }}
+                          options={monthOptions}
+                        />
+                      </Col>
+                    )}
+
+                    {showQuincena && (
+                      <Col xs={24} md={6}>
+                        <label>Quincena</label>
+                        <Select
+                          style={{ width:'100%' }}
+                          value={filtrosG.quincena}
+                          onChange={(v)=>{ const val=Number(v); setFiltrosG(p=>({...p,quincena:val})); debouncedFetch('quincena',{quincena:val},250); }}
+                          options={[{label:'1 (1–15)', value:1},{label:'2 (16–fin de mes)', value:2}]}
+                        />
+                      </Col>
+                    )}
+
+                    {showFechaRef && (
+                      <Col xs={24} md={6}>
+                        <label>Fecha</label>
+                        <Input
+                          type="date"
+                          value={filtrosG.fechaRef}
+                          onChange={(e)=>{ const val=e.target.value; setFiltrosG(p=>({...p,fechaRef:val})); debouncedFetch('fechaRef',{fechaRef:val},300); }}
+                          onPressEnter={()=>fetchGastos()}
+                        />
+                      </Col>
+                    )}
+
+                    <Col xs={24} md={8}>
+                      <label>Sucursal</label>
+                      <Select
+                        allowClear
+                        style={{ width:'100%' }}
+                        placeholder="(todas)"
+                        value={filtrosG.nombreSucursal || undefined}
+                        onChange={(v)=>{ const val=v||''; setFiltrosG(p=>({...p,nombreSucursal:val})); debouncedFetch('sucursal',{nombreSucursal:val},200); }}
+                        options={[{ label: '(todas)', value: '' }, ...sucursales.map(s => ({ label: s, value: s }))]}
+                      />
+                    </Col>
+
+                    <Col xs={24} md={10}>
+                      <label>Buscar</label>
+                      <Input
+                        placeholder="categoría, proveedor, método, descripción…"
+                        value={filtrosG.q}
+                        onChange={(e)=>{ const val=e.target.value; setFiltrosG(p=>({...p,q:val})); debouncedFetch('q',{q:val},500); }}
+                        onPressEnter={()=>fetchGastos()}
+                      />
+                    </Col>
+
+                    <Col xs={24} md={12}>
+                      <label>Título de la barbería</label>
+                      <Input
+                        value={tituloBarberia}
+                        onChange={(e)=>setTituloBarberia(e.target.value)}
+                        placeholder="Barbería / Empresa"
+                      />
+                    </Col>
+
+                    <Col xs={24}>
+                      <Space>
+                        <Button type="primary" onClick={()=>fetchGastos()} loading={loadingGastos}>Actualizar</Button>
+                        <Button onClick={handleDownloadPDF}>Descargar PDF</Button>
+                        <Button onClick={resetFiltros} danger ghost>Borrar filtros</Button>
+                      </Space>
+                    </Col>
+                  </Row>
+                </Card>
+              </Collapse.Panel>
+            </Collapse>
+
+            {/* KPIs duplicados (ocultos, conservados por si los usas luego) */}
+            <Row gutter={[12,12]} style={{ display:'none' }}>
+              {KPIsG.map(k => (
+                <Col xs={24} md={8} key={'dup-'+k.label}>
+                  <Card size="small">
+                    <Statistic title={k.label} value={k.value} />
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+
+            {/* TABLA */}
+            <Card size="small">
               <Table
                 size="middle"
                 rowKey={function(r,i){ return r && r.id ? `rg-${r.id}` : `rg-${i}`; }}
@@ -562,5 +559,17 @@
     );
   }
 
-  ReactDOM.render(<Reportes />, document.getElementById('ReportesView'));
+  (function mountReportes(){
+    function mount(){
+      const el = document.getElementById('ReportesView');
+      if (!el){ setTimeout(mount, 50); return; }
+      try { ReactDOM.unmountComponentAtNode(el); } catch(_) {}
+      ReactDOM.render(<Reportes />, el);
+    }
+    if (document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', mount);
+    } else {
+      mount();
+    }
+  })();
 </script>
