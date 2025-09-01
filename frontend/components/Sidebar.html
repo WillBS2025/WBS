@@ -23,6 +23,25 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
     } catch (_) { return []; }
   }, []);
 
+  // ================== AGREGADO: cargar logo (mismo del Login) ==================
+  React.useEffect(() => {
+    const paint = (r) => {
+      const el = document.getElementById('sidebar-logo');
+      if (el && r) {
+        el.src = r.src;
+        if (r.srcSet) el.setAttribute('srcset', r.srcSet);
+      }
+    };
+    if (window.APP_LOGO_LOGIN) {
+      paint(window.APP_LOGO_LOGIN);
+    } else {
+      try {
+        google.script.run.withSuccessHandler(paint).getLoginLogo();
+      } catch(_) {}
+    }
+  }, []);
+  // ============================================================================
+
   return (
     <Layout.Sider
       className={`wb-sidebar ${collapsed ? "is-collapsed" : ""}`}
@@ -76,6 +95,12 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
         .wb-sidebar.is-collapsed{ --logo-size:44px; --logo-font:18px; }
         .wb-sidebar.is-collapsed .wb-brand{ justify-content:center; gap:0; padding-left:0; padding-right:0; }
         .wb-sidebar.is-collapsed .wb-logo{ border-width:1.5px!important; }
+
+        /* ================== AGREGADO: reglas para el logo-imagen ================== */
+        .wb-logo{ background:transparent!important; }        /* quita fondo negro */
+        .wb-logo img{ width:100%; height:100%; object-fit:contain; border-radius:999px; display:block; }
+        .wb-logo .wb-initials{ display:none!important; }     /* oculta las iniciales (sin borrar) */
+        /* ========================================================================= */
       `}</style>
 
       {/* Botón collapse */}
@@ -90,7 +115,15 @@ function Sidebar({ collapsed, onCollapse, handleLogout }) {
 
       {/* Logo + título */}
       <div className="wb-brand">
-        <div className="wb-logo w-20 h-20 flex items-center justify-center rounded-full border-2 border-[#bfa46f] shadow-md bg-[#111]">
+        <div
+          className="wb-logo w-20 h-20 flex items-center justify-center rounded-full border-2 border-[#bfa46f] shadow-md bg-[#111]"
+          style={{ overflow:'hidden' }}  /* AGREGADO: seguridad por si acaso */
+        >
+          {/* ================== AGREGADO: imagen real del logo ================== */}
+          <img id="sidebar-logo" alt="Wilito BarberShop" decoding="async" />
+          {/* ==================================================================== */}
+
+          {/* Original: iniciales (conservadas; ahora ocultas por CSS) */}
           <span className="wb-initials text-3xl font-extrabold tracking-wide text-[#bfa46f]">WB</span>
         </div>
         {!collapsed && <div className="wb-title">Wilito BarberShop</div>}
