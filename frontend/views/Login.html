@@ -12,23 +12,14 @@ function Login({ onLogin }) {
         setLoading(false);
 
         if (resp && resp.success) {
-          // MENSAJE DE ÉXITO DEL BACKEND (SI LO ENVÍA)
           if (resp.message) message.success(resp.message);
 
-          // ===== CONSTRUIR PERFIL DE USUARIO CON FALLBACKS SEGUROS =====
-          // NOTA: TOMAMOS NOMBRE/EMAIL DEL BACKEND SI EXISTEN,
-          // Y SI NO, USAMOS EL CORREO DEL FORMULARIO (ANTES DEL @) COMO NOMBRE.
           const raw = resp.user || {};
-          const username =
-            raw.nombre_usuario || values.nombre_usuario || raw.username || "";
-          const email =
-            raw.email || raw.correo || "";
+          const username = raw.nombre_usuario || values.nombre_usuario || raw.username || "";
+          const email = raw.email || raw.correo || "";
           const baseName =
             raw.nombre_usuario ||
-            raw.nombre ||
-            raw.name ||
-            raw.fullName ||
-            raw.displayName ||
+            raw.nombre || raw.name || raw.fullName || raw.displayName ||
             (username ? String(username).split("@")[0] : "Usuario");
 
           const user = {
@@ -38,19 +29,11 @@ function Login({ onLogin }) {
             nombreCompleto: String(raw.nombreCompleto || raw.fullName || raw.name || "").trim()
           };
 
-          // ===== PERSISTIR EN LOCALSTORAGE: userInfo + userRole =====
           try {
             localStorage.setItem("userInfo", JSON.stringify(user));
-            localStorage.setItem(
-              "userRole",
-              resp.role || raw.rol || "admin"
-            );
+            localStorage.setItem("userRole", resp.role || raw.rol || "admin");
           } catch (_) {}
 
-          // OPCIONAL: SALUDO
-          // message.success(`¡Bienvenido, ${user.name}!`);
-
-          // AVISAR AL ROUTER QUE EL LOGIN FUE EXITOSO
           onLogin(true);
         } else {
           Modal.error({
@@ -64,18 +47,47 @@ function Login({ onLogin }) {
         setLoading(false);
         Modal.error({
           title: "Error de comunicación",
-          content:
-            "Ha ocurrido un error al intentar iniciar sesión. Por favor, inténtalo de nuevo más tarde.",
+          content: "Ha ocurrido un error al intentar iniciar sesión. Por favor, inténtalo de nuevo más tarde.",
         });
         console.error("Error al llamar a Apps Script:", error);
       })
       .verificarCredenciales(values.nombre_usuario, values.contrasenia);
   };
 
-  // Estilo de texto con “oro viejo” en degradado, sin CSS externo
+  // ========= Logo inmediato (inline / cache local) =========
+  useEffect(() => {
+    window.APP_BRAND = 'WILITO Barber Shop';
+
+    // 1) Si ya viene inline o hay cache local → pinta al toque
+    let inline = window.APP_LOGO_LOGIN;
+    let cached = null;
+    try { cached = JSON.parse(localStorage.getItem('LOGIN_LOGO_JSON') || 'null'); } catch (_){}
+
+    const r = inline || cached;
+    const img = document.getElementById('login-logo');
+    if (r && img) {
+      img.src = r.src;
+      if (r.srcSet) img.setAttribute('srcset', r.srcSet);
+    }
+
+    // 2) Fallback (por si no vino inline) — se guarda en cache local
+    if (!inline && !cached) {
+      google.script.run.withSuccessHandler((resp) => {
+        if (!resp) return;
+        try { localStorage.setItem('LOGIN_LOGO_JSON', JSON.stringify(resp)); } catch(_){}
+        const el = document.getElementById('login-logo');
+        if (el) {
+          el.src = resp.src;
+          if (resp.srcSet) el.setAttribute('srcset', resp.srcSet);
+        }
+      }).getLoginLogo();
+    }
+  }, []);
+  // =========================================================
+
+  // Estilo de texto con “oro viejo”
   const goldText = {
-    backgroundImage:
-      "linear-gradient(135deg,#bfa46f 0%, #a3874a 35%, #bfa46f 70%, #8f7a45 100%)",
+    backgroundImage: "linear-gradient(135deg,#bfa46f 0%, #a3874a 35%, #bfa46f 70%, #8f7a45 100%)",
     WebkitBackgroundClip: "text",
     backgroundClip: "text",
     color: "transparent",
@@ -83,10 +95,8 @@ function Login({ onLogin }) {
 
   return (
     <div className="relative min-h-screen flex items-center justify-center font-sans overflow-hidden">
-      {/* Fondo animado: tu CSS externo aplica en .bg-animated */}
       <div className="absolute inset-0 bg-animated"></div>
 
-      {/* Contenedor principal */}
       <div className="relative z-10 w-full max-w-md px-6">
         <Card
           className="shadow-xl rounded-2xl"
@@ -99,17 +109,37 @@ function Login({ onLogin }) {
           bodyStyle={{ padding: 28 }}
           title={
             <div className="flex flex-col items-center space-y-3 select-none">
-              <div className="w-20 h-20 flex items-center justify-center rounded-full border-2 border-[#bfa46f] shadow-md bg-[#111]">
-                <span className="text-3xl font-extrabold tracking-wide text-[#bfa46f]">
-                  WB
-                </span>
-              </div>
-              {/* Nombre con degradado dorado opaco */}
+              {/* ====== LOGO CIRCULAR MÁS PEQUEÑO ====== */}
+              <img
+                id="login-logo"
+                alt="WILITO Barber Shop"
+                width="120"
+                height="120"
+                decoding="async"
+                style={{
+                  width: 135,            // ajusta 110–135 a tu gusto
+                  height: 135,
+                  objectFit: 'contain',  // muestra TODO tu PNG sin recorte
+                  borderRadius: '50%',   // círculo (déjalo si así lo quieres)
+                  border: '2px solid #bfa46f',
+                  background: 'transparent',  // tu imagen ya es sin fondo
+                  boxShadow: '0 0 18px rgba(191,164,111,0.22)',
+                  padding: 2
+                }}
+              />
+
+
+              {/* ====== ORIGINAL "WB" (conservado oculto) ====== */}
+              {false && (
+                <div className="w-20 h-20 flex items-center justify-center rounded-full border-2 border-[#bfa46f] shadow-md bg-[#111]">
+                  <span className="text-3xl font-extrabold tracking-wide text-[#bfa46f]">WB</span>
+                </div>
+              )}
+
               <h1 className="text-2xl font-extrabold tracking-wide" style={goldText}>
                 Wilito BarberShop
               </h1>
 
-              {/* Divisor fino dorado */}
               <div
                 style={{
                   width: 120,

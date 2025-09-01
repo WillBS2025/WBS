@@ -42,3 +42,74 @@ const include = (ruta) => {
   // y obtiene su contenido como una cadena de texto.
   return HtmlService.createHtmlOutputFromFile(ruta).getContent();
 };
+
+/** ===== Logo Login (rápido + cacheado, con redimensionado) ===== */
+const LOGIN_LOGO_IDS = {
+  "1x": "105QrdgSXruSKu0Pr8xONzFK9feMuQ6p2", // mismo ID para 1x
+  "2x": "105QrdgSXruSKu0Pr8xONzFK9feMuQ6p2"  // y 2x
+};
+
+// Helper: genera data URL desde Drive y opcionalmente redimensiona a un ancho dado
+function _logoDataUrlFor(fileId, targetWidth) {
+  if (!fileId) return "";
+  var blob = DriveApp.getFileById(fileId).getBlob();
+  var outBlob = blob;
+
+  // Si se indica targetWidth, reducimos tamaño para que el base64 sea chico
+  if (targetWidth && targetWidth > 0) {
+    try {
+      var img = ImagesService.open(blob);
+      outBlob = img.resize(targetWidth, 0).getBlob(); // alto proporcional
+      outBlob.setContentTypeFromExtension(); // intenta conservar tipo
+    } catch (e) {
+      // Si por algún motivo falla ImagesService, seguimos con el blob original
+      outBlob = blob;
+    }
+  }
+
+  var mime = outBlob.getContentType() || "image/png";
+  var b64 = Utilities.base64Encode(outBlob.getBytes());
+  return "data:" + mime + ";base64," + b64;
+}
+
+// Lee de Drive, hace base64 y cachea 6 horas (solo si no excede el límite)
+function _getLoginLogoData() {
+  var cache = CacheService.getScriptCache();
+  var key = "login_logo_json_v3"; // bump de versión para evitar cache viejo
+  var cached = cache.get(key);
+  if (cached) return JSON.parse(cached);
+
+  // Generamos versiones ligeras:
+  // - 1x a ~120 px  (para render a 120–135 en Login)
+  // - 2x a ~240 px  (retina)
+  var src1x = _logoDataUrlFor(LOGIN_LOGO_IDS["1x"] || LOGIN_LOGO_IDS["2x"], 120);
+  var src2x = _logoDataUrlFor(LOGIN_LOGO_IDS["2x"], 240);
+
+  var obj = {
+    // usamos la 2x como fuente principal (nítido en pantallas retina)
+    src: src2x || src1x,
+    srcSet: (src1x ? (src1x + " 1x, ") : "") + (src2x ? (src2x + " 2x") : "")
+  };
+
+  // Cachea solo si no excede el límite de CacheService (~100 KB por item)
+  var payload = JSON.stringify(obj);
+  if (payload.length < 95000) {
+    cache.put(key, payload, 21600); // 6 h
+  } // si no, lo devolvemos sin cachear (pero igual funciona)
+
+  return obj;
+}
+
+// API que ya tenías
+function getLoginLogo() {
+  return _getLoginLogoData();
+}
+
+// Inyecta el logo *en línea* al HTML (ultra-rápido)
+function getLoginLogoInline() {
+  var o = _getLoginLogoData();
+  return HtmlService.createHtmlOutput(
+    "<script>window.APP_LOGO_LOGIN=" + JSON.stringify(o) + ";</script>"
+  ).getContent();
+}
+
