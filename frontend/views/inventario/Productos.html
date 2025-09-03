@@ -1082,7 +1082,7 @@ function Productos() {
                 options={categoriasSelectOptions}
                 disabled={modalMode === 'duplicate'}
                 filterOption={function(inputValue, option){
-                  var t = String(option?.value || '').toUpperCase();
+                  var t = String((option && option.value) || '').toUpperCase();
                   return t.indexOf(String(inputValue || '').toUpperCase()) >= 0;
                 }}
                 open={catOpen && modalMode !== 'duplicate'}

@@ -3,82 +3,57 @@
 </style>
 
 <div id="ReportesView"></div>
-
-<!-- Helper de cliente: se ejecuta SOLO en el navegador -->
-<script>
-(function (global) {
-  if (!global) return; // evita "window is not defined" si esto se ejecutara en V8 (Apps Script)
-
-  var EmailShare = {};
-
-  // Llama al servidor para generar PDF (ventas o gastos) y devuelve base64
-  EmailShare.getPdfBase64 = function (tipo, filtros, meta) {
-    return new Promise(function (resolve, reject) {
-      var serverFn = (tipo === 'ventas')
-        ? 'generarReporteVentasPDF_Lite'
-        : 'generarReporteGastosPDF_Lite';
-
-      google.script.run
-        .withSuccessHandler(function(res){
-          try { resolve(typeof res === 'string' ? JSON.parse(res) : res); }
-          catch(e){ resolve(res); }
-        })
-        .withFailureHandler(reject)[serverFn](filtros, meta);
-    });
-  };
-
-  // Envía el correo usando el backend (Gmail Advanced Service con fallback a MailApp)
-  EmailShare.sendEmailGmail = function (payload) {
-    return new Promise(function (resolve, reject) {
-      google.script.run
-        .withSuccessHandler(function(res){
-          try { resolve(typeof res === 'string' ? JSON.parse(res) : res); }
-          catch(e){ resolve(res); }
-        })
-        .withFailureHandler(reject)
-        .sendReportEmailGmail(payload);
-    });
-  };
-
-  // Expone en el navegador
-  global.EmailShare = EmailShare;
-})(typeof window !== 'undefined' ? window : null);
-</script>
-
 <script type="text/babel">
   const { useState, useEffect, useMemo, useRef } = React;
   const { Tabs, Table, Card, message, Button, Row, Col, Input, Select, Statistic, Space, Tag, Collapse } = antd;
 
   function Reportes(){
     // ===== Compartir por correo (modal) =====
-    const [emailModal, setEmailModal] = useState({ open:false, tipo:null, to:'', sending:false });
-    const emailOk = useMemo(() => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((emailModal.to||'').trim()), [emailModal.to]);
+    const [emailModal, setEmailModal] = useState({ open:false, tipo:null, to:'', pdfBase64:'', pdfUrl:'', sending:false, fileName:'' });
 
-    function openEmailModalVentas(){ setEmailModal(prev => ({ ...prev, open:true, tipo:'ventas', sending:false })); }
-    function openEmailModalGastos(){ setEmailModal(prev => ({ ...prev, open:true, tipo:'gastos', sending:false })); }
+    async function openEmailModalVentas(){
+      try{
+        setEmailModal(prev => ({ ...prev, open:true, tipo:'ventas', sending:true, to:'' }));
+        const filtros = filtrosV || {};
+        const meta = { tituloBarberia, usuario: usuarioActual };
+        const res = await EmailShare.getPdfBase64('ventas', filtros, meta);
+        let url = '';
+        if (res.base64){ url = EmailShare.base64ToBlobUrl(res.base64, 'application/pdf'); }
+        else if (res.fileUrl){ url = res.fileUrl; }
+        setEmailModal({ open:true, tipo:'ventas', to:'', pdfBase64:res.base64||'', pdfUrl:url, sending:false, fileName: (res.fileName || 'Reporte_Ventas.pdf') });
+      }catch(err){
+        console.error(err);
+        setEmailModal(prev => ({ ...prev, open:false, sending:false }));
+        message.error('No se pudo generar el PDF de ventas');
+      }
+    }
+
+    async function openEmailModalGastos(){
+      try{
+        setEmailModal(prev => ({ ...prev, open:true, tipo:'gastos', sending:true, to:'' }));
+        const filtros = buildFiltrosG();
+        const meta = { tituloBarberia, usuario: usuarioActual };
+        const res = await EmailShare.getPdfBase64('gastos', filtros, meta);
+        let url = '';
+        if (res.base64){ url = EmailShare.base64ToBlobUrl(res.base64, 'application/pdf'); }
+        else if (res.fileUrl){ url = res.fileUrl; }
+        setEmailModal({ open:true, tipo:'gastos', to:'', pdfBase64:res.base64||'', pdfUrl:url, sending:false, fileName: (res.fileName || 'Reporte_Gastos.pdf') });
+      }catch(err){
+        console.error(err);
+        setEmailModal(prev => ({ ...prev, open:false, sending:false }));
+        message.error('No se pudo generar el PDF de gastos');
+      }
+    }
 
     async function handleSendEmail(){
       try{
         const to = (emailModal.to || '').trim();
         if (!to){ message.warning('Ingresa un correo destino'); return; }
-        if (!emailOk){ message.warning('Correo no válido'); return; }
-
         setEmailModal(prev => ({ ...prev, sending:true }));
-        const tipo = emailModal.tipo || 'ventas';
-        const filtros = (tipo==='gastos') ? buildFiltrosG() : buildFiltrosV();
-        const meta = { tituloBarberia, usuario: usuarioActual };
-
-        // Genera el mismo PDF que "Descargar PDF"
-        const res = await EmailShare.getPdfBase64(tipo, filtros, meta);
-        const base64 = res && res.base64 ? res.base64 : '';
-        if (!base64) throw new Error('No se pudo generar el PDF');
-
-        const subject = (tituloBarberia ? (String(tituloBarberia)+' - ') : '') + (tipo==='gastos' ? 'Reporte de gastos' : 'Reporte de ventas');
+        const subject = (tituloBarberia ? (String(tituloBarberia)+' - ') : '') + (emailModal.tipo==='gastos' ? 'Reporte de gastos' : 'Reporte de ventas');
         const htmlBody = 'Se adjunta el reporte en formato PDF.';
-        const filename = (res && res.fileName) || (tipo==='gastos' ? 'Reporte_Gastos.pdf' : 'Reporte_Ventas.pdf');
-
-        await EmailShare.sendEmailGmail({ to, subject, htmlBody, filename, base64 });
-        setEmailModal({ open:false, tipo:null, to:'', sending:false });
+        await EmailShare.sendEmailGmail({ to, subject, htmlBody, filename: emailModal.fileName || (emailModal.tipo==='gastos'?'Reporte_Gastos.pdf':'Reporte_Ventas.pdf'), base64: emailModal.pdfBase64 });
+        setEmailModal({ open:false, tipo:null, to:'', pdfBase64:'', pdfUrl:'', sending:false, fileName:'' });
         message.success('Correo enviado correctamente');
       }catch(err){
         console.error(err);
@@ -127,7 +102,7 @@
                   sessionStorage.setItem('repVentas', JSON.stringify(r.data));
                   setVentas(r.data);
                 } else {
-                  message.warning('No se encontraron registros.');
+                  message.warning('No se encontraron ningun registros.');
                 }
               }catch(e){}
               setLoadingVentas(false);
@@ -147,8 +122,6 @@
     const [gastos, setGastos] = useState([]);
     const [resumenG, setResumenG] = useState(null);
     const [sucursales, setSucursales] = useState([]);
-    const [servicios, setServicios] = useState([]);
-
     const [usuarioActual, setUsuarioActual] = useState('N/D');
 
     const yearNow = new Date().getFullYear();
@@ -164,12 +137,11 @@
       q: ''
     });
 
-    // Filtros para VENTAS
+    // Filtros para VENTAS (misma UI que Gastos)
     const [filtrosV, setFiltrosV] = useState({
       periodo: 'anual',
       anio: yearNow,
       mes: monthNow,
-      // quincena ya no se usa en ventas; mantenemos la key para compatibilidad
       quincena: 1,
       fechaRef: new Date().toISOString().slice(0,10),
       nombreSucursal: '',
@@ -177,7 +149,7 @@
     });
 
     function resetFiltrosV(){
-      setFiltrosV({
+      const defaults = {
         periodo: 'anual',
         anio: yearNow,
         mes: monthNow,
@@ -185,8 +157,12 @@
         fechaRef: new Date().toISOString().slice(0,10),
         nombreSucursal: '',
         q: ''
-      });
+      };
+      setFiltrosV(defaults);
     }
+
+
+    
 
     const [tituloBarberia, setTituloBarberia] = useState('Barbería');
 
@@ -198,13 +174,14 @@
 
     function endOfMonth(y, m){ return new Date(y, m, 0).getDate(); }
     function ymd(d){
-      const y = d.getFullYear();
-      const m = String(d.getMonth()+1).padStart(2,'0');
-      const dd = String(d.getDate()).padStart(2,'0');
-      return `${y}-${m}-${dd}`;
-    }
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
     function _norm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
     function _parseYmd(s){ try{ const [y,m,d] = String(s||'').split('-').map(Number); return new Date(y, m-1, d); }catch(e){ return null; } }
+
 
     function debouncedFetch(key, overrides, delay=350){
       try{
@@ -243,44 +220,15 @@
         out.desde = ymd(start); out.hasta = ymd(end);
       } else if (p === 'semanal'){
         const ref = F.fechaRef ? new Date(F.fechaRef) : new Date();
-        const start = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0,0,0);
-        const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,0);
-        out.desde = ymd(start); out.hasta = ymd(end);
+        const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+        const day = d.getDay(); const diffToMon = (day === 0 ? -6 : 1 - day);
+        const mon = new Date(d); mon.setDate(d.getDate() + diffToMon);
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6); sun.setHours(23,59,59,0);
+        out.desde = ymd(mon); out.hasta = ymd(sun);
       } else if (p === 'diario'){
         const ref = F.fechaRef ? new Date(F.fechaRef) : new Date();
         const start = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0,0,0);
         const end = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 23,59,59);
-        out.desde = ymd(start); out.hasta = ymd(end);
-      }
-      return out;
-    }
-
-    // Ventas: ahora semanal/quincenal/diario usan fechaRef
-    function buildFiltrosV(overrides){
-      const F = { ...filtrosV, ...(overrides||{}) };
-      const p = F.periodo || 'anual';
-      const out = { periodo: p, nombreSucursal: F.nombreSucursal || '', q: F.q || '' };
-      const y = Number(F.anio || 0) || new Date().getFullYear();
-
-      if (p === 'anual'){
-        out.anio = y;
-      } else if (p === 'mensual'){
-        const m = Number(F.mes||0) || monthNow;
-        out.anio = y; out.mes = m;
-      } else if (p === 'quincenal'){ // 15 días desde fechaRef
-        const ref = F.fechaRef ? _parseYmd(F.fechaRef) : new Date();
-        const start = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0,0,0);
-        const end = new Date(start); end.setDate(start.getDate() + 14); end.setHours(23,59,59,0);
-        out.desde = ymd(start); out.hasta = ymd(end);
-      } else if (p === 'semanal'){ // 7 días (fechaRef + 6)
-        const ref = F.fechaRef ? _parseYmd(F.fechaRef) : new Date();
-        const start = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0,0,0);
-        const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,0);
-        out.desde = ymd(start); out.hasta = ymd(end);
-      } else if (p === 'diario'){
-        const ref = F.fechaRef ? _parseYmd(F.fechaRef) : new Date();
-        const start = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0,0,0);
-        const end = new Date(start); end.setHours(23,59,59,0);
         out.desde = ymd(start); out.hasta = ymd(end);
       }
       return out;
@@ -419,49 +367,69 @@
       }catch(e){ setLoadingGastos(false); }
     }
 
-    // Descargar PDF (Ventas)
+    
+    // Descargar PDF (Ventas - LITE)
     function handleDownloadPDFVentas(){
       try{
-        if (google && google.script && google.script.run){
-          const filtros = buildFiltrosV();
-          const meta = { tituloBarberia, usuario: usuarioActual };
-          google.script.run
-            .withSuccessHandler(function(res){
-              try{
-                const r = (typeof res === 'string') ? JSON.parse(res) : res;
-                if (!r || !r.ok){ message.error((r && r.message) || 'No se pudo generar el PDF'); return; }
-                if (r.base64){
-                  const url = 'data:application/pdf;base64,' + r.base64;
-                  fetch(url).then(x=>x.blob()).then(blob=>{
-                    const a = document.createElement('a');
-                    a.href = URL.createObjectURL(blob);
-                    a.download = (r.fileName || 'Reporte_Ventas.pdf');
-                    a.click();
-                    URL.revokeObjectURL(a.href);
-                  });
-                } else if (r.fileUrl){
-                  window.open(r.fileUrl, '_blank');
-                }
-                message.success('PDF generado correctamente.');
-              }catch(e){ console.error(e); message.error('Error al procesar PDF'); }
-            })
-            .withFailureHandler(function(err){
-              console.error(err);
-              message.error('Error al generar PDF');
-            })
-            .generarReporteVentasPDF_Lite(filtros, meta);
-        } else {
-          message.error('No se pudo conectar con el servidor');
-        }
-      }catch(e){ console.error(e); message.error('No se pudo preparar el PDF'); }
+        const rows = Array.isArray(ventasFiltradas) ? ventasFiltradas : [];
+        const title = (tituloBarberia ? (String(tituloBarberia)+' - ') : '') + 'Reporte de ventas';
+        const dateStr = new Date().toLocaleString('es-HN');
+        const htmlRows = rows.map((r,i)=>(
+          `<tr>
+             <td style="padding:6px;border:1px solid #eee;text-align:right;">${r.n||i+1}</td>
+             <td style="padding:6px;border:1px solid #eee;">${r.fecha||''}</td>
+             <td style="padding:6px;border:1px solid #eee;">${(r.descripcion||'').toString()}</td>
+             <td style="padding:6px;border:1px solid #eee;text-align:right;">${Number(r.cantidad||0)}</td>
+             <td style="padding:6px;border:1px solid #eee;text-align:right;">L.${Number(r.precio||0).toFixed(2)}</td>
+             <td style="padding:6px;border:1px solid #eee;text-align:right;">L.${Number(r.total_linea||0).toFixed(2)}</td>
+             <td style="padding:6px;border:1px solid #eee;">${r.metodo_pago||''}</td>
+           </tr>`
+        )).join('');
+        const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>${title}</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif; font-size:12px; color:#111;}
+  h1{font-size:18px;margin:0 0 6px 0}
+  .meta{font-size:11px;color:#666;margin-bottom:10px}
+  table{border-collapse:collapse;width:100%}
+  thead th{border:1px solid #ddd;background:#f6f6f6;padding:6px;text-align:left}
+  tbody td{padding:6px;border:1px solid #eee}
+  @page{size:auto;margin:12mm}
+</style></head>
+<body>
+  <h1>${title}</h1>
+  <div class="meta">Generado: ${dateStr}</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:40px;text-align:right">N.</th>
+        <th style="width:90px">Fecha</th>
+        <th>Descripción</th>
+        <th style="width:60px;text-align:right">Cant.</th>
+        <th style="width:80px;text-align:right">Precio</th>
+        <th style="width:100px;text-align:right">Total línea</th>
+        <th style="width:130px">Método de pago</th>
+      </tr>
+    </thead>
+    <tbody>${htmlRows}</tbody>
+  </table>
+</body></html>`;
+        const w = window.open('', '_blank');
+        if (!w){ message.error('Bloqueado por el navegador'); return; }
+        w.document.open(); w.document.write(html); w.document.close();
+        w.focus();
+        const safeClose = function(){ try{ w.close(); }catch(e){} };
+        w.onload = function(){
+          try{ w.print(); setTimeout(safeClose, 300); }catch(e){ safeClose(); }
+        };
+      }catch(e){ message.error('No se pudo preparar el PDF'); }
     }
-
-    // Descargar PDF (Gastos)
+// Descargar PDF (LITE)
     function handleDownloadPDF(){
       try{
         if (google && google.script && google.script.run){
           const filtros = buildFiltrosG();
-          const meta = { tituloBarberia, usuario: usuarioActual };
+          const meta = { tituloBarberia, usuario: usuarioActual }; // sin logoUrl
           google.script.run
             .withSuccessHandler(function(res){
               if (!mountedRef.current) return;
@@ -492,51 +460,9 @@
       }catch(e){}
     }
 
-
-    function fromCacheServicios(){
-      try{
-        const raw = sessionStorage.getItem('repServicios');
-        if (raw){
-          const arr = JSON.parse(raw);
-          if (Array.isArray(arr)) setServicios(arr);
-        }
-      }catch(e){}
-    }
-    function fetchServicios(){
-      try{
-        if (google && google.script && google.script.run){
-          google.script.run
-            .withSuccessHandler(function(res){
-              try{
-                const data = (typeof res === 'string') ? JSON.parse(res) : res;
-                let names = [];
-                if (Array.isArray(data)){
-                  names = data.map(it => (it && (it.nombre_servicio || it.nombre || it.descripcion)) || '')
-                              .filter(Boolean);
-                } else if (data && Array.isArray(data.data)) {
-                  names = data.data.map(it => (it && (it.nombre_servicio || it.nombre || it.descripcion)) || '')
-                                   .filter(Boolean);
-                }
-                // únicos y ordenados (sin duplicados)
-                const uniq = Array.from(new Set(names))
-                  .sort((a,b)=> a.localeCompare(b,'es',{sensitivity:'base'}));
-                sessionStorage.setItem('repServicios', JSON.stringify(uniq));
-                setServicios(uniq);
-              }catch(e){}
-            })
-            .withFailureHandler(function(err){ /* silencio */ })
-            .listarServicios();
-        }
-      }catch(e){}
-    }
-
     // Cargas iniciales
     useEffect(function(){
       fromCache();
-      fromCacheServicios();
-      const hasServiciosCache = !!sessionStorage.getItem('repServicios');
-      if (!hasServiciosCache){ fetchServicios(); }
-
       const hasCache = !!sessionStorage.getItem('repVentas');
       if (!hasCache){ fetchVentas(); }
       else { const id = setTimeout(fetchVentas, 120); timersRef.current.push(id); }
@@ -555,7 +481,7 @@
       }
     }, [gastos]);
 
-    // ===== Columnas (Ventas) =====
+        // ===== Columnas =====
     const colsVentas = useMemo(function(){
       return [
         { title:'N.', dataIndex:'n', key:'n', width:80, align:'center', sorter:function(a,b){return Number(a.n||0)-Number(b.n||0);} },
@@ -568,21 +494,34 @@
       ];
     }, []);
 
-    // ===== Filtrado en cliente (Ventas) =====
+    // Lista filtrada en cliente (periodo, sucursal, texto)
     const ventasFiltradas = useMemo(() => {
       try{
         const F = filtrosV || {};
         const p = F.periodo || 'anual';
         const y = Number(F.anio||0) || new Date().getFullYear();
         const m = Number(F.mes||0) || (new Date().getMonth()+1);
-        const ref = F.fechaRef ? _parseYmd(F.fechaRef) : new Date();
+        const q = Number(F.quincena||1)===2 ? 2 : 1;
+        const ref = F.fechaRef ? new Date(F.fechaRef) : new Date();
 
         let desde = null, hasta = null;
         if (p==='anual'){ desde = new Date(y,0,1,0,0,0); hasta = new Date(y,11,31,23,59,59); }
         else if (p==='mensual'){ desde = new Date(y,m-1,1,0,0,0); hasta = new Date(y,m-1,endOfMonth(y,m),23,59,59); }
-        else if (p==='quincenal'){ const s = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0,0,0); const e = new Date(s); e.setDate(s.getDate()+14); e.setHours(23,59,59,0); desde=s; hasta=e; }
-        else if (p==='semanal'){ const s = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0,0,0); const e = new Date(s); e.setDate(s.getDate()+6); e.setHours(23,59,59,0); desde=s; hasta=e; }
-        else if (p==='diario'){ const s = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0,0,0); const e = new Date(s); e.setHours(23,59,59,0); desde=s; hasta=e; }
+        else if (p==='quincenal'){
+          const startDay = (q===1)?1:16;
+          const endDay = (q===1)?15:endOfMonth(y,m);
+          desde = new Date(y,m-1,startDay,0,0,0);
+          hasta = new Date(y,m-1,endDay,23,59,59);
+        } else if (p==='semanal'){
+          const d = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+          const day = d.getDay(); const diffToMon = (day === 0 ? -6 : 1 - day);
+          const mon = new Date(d); mon.setDate(d.getDate() + diffToMon);
+          const sun = new Date(mon); sun.setDate(mon.getDate() + 6); sun.setHours(23,59,59,0);
+          desde = mon; hasta = sun;
+        } else if (p==='diario'){
+          desde = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 0,0,0);
+          hasta = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate(), 23,59,59);
+        }
 
         const qtxt = _norm(F.q||'');
         const sucSel = String(F.nombreSucursal||'').trim();
@@ -592,7 +531,9 @@
           if (!f) return false;
           if (desde && f < desde) return false;
           if (hasta && f > hasta) return false;
+
           if (sucSel && String(it.sucursal||'').trim() !== sucSel) return false;
+
           if (qtxt){
             const blob = _norm(it.descripcion||'');
             if (blob.indexOf(qtxt) === -1) return false;
@@ -602,22 +543,6 @@
       }catch(e){ return ventas||[]; }
     }, [ventas, filtrosV]);
 
-    // ===== KPIs (Ventas) =====
-    const KPIsV = useMemo(() => {
-      const rows = ventasFiltradas || [];
-      let total = 0, unidades = 0;
-      for (let i=0;i<rows.length;i++){
-        total += Number((rows[i] && rows[i].total_linea) || 0);
-        unidades += Number((rows[i] && rows[i].cantidad) || 0);
-      }
-      return [
-        { label:'Total', value: currency(total) },
-        { label:'Registros', value: String(rows.length) },
-        { label:'Unidades', value: String(unidades) },
-      ];
-    }, [ventasFiltradas]);
-
-    // ===== Columnas (Gastos) =====
     const colsGastos = useMemo(() => ([
       { title: 'Fecha', dataIndex: 'fecha', key: 'fecha', width: 110 },
       { title: 'Categoría', dataIndex: 'categoria', key: 'categoria', width: 140, render: (v) => v ? <Tag>{v}</Tag> : '-' },
@@ -651,24 +576,21 @@
       {value:9,label:'Septiembre'},{value:10,label:'Octubre'},{value:11,label:'Noviembre'},{value:12,label:'Diciembre'}
     ], []);
 
-    const showMesG = filtrosG.periodo === 'mensual' || filtrosG.periodo === 'quincenal';
-    const showQuincenaG = filtrosG.periodo === 'quincenal';
-    const showFechaRefG = filtrosG.periodo === 'semanal' || filtrosG.periodo === 'diario';
+    const showMes = filtrosG.periodo === 'mensual' || filtrosG.periodo === 'quincenal';
+    const showQuincena = filtrosG.periodo === 'quincenal';
+    const showFechaRef = filtrosG.periodo === 'semanal' || filtrosG.periodo === 'diario';
 
     return (
       <div>
         <div className="page-title">Reportes</div>
-
-        {/* Modal sin vista previa */}
         <antd.Modal
           title="Compartir por correo"
-          visible={emailModal.open}
           open={emailModal.open}
           onCancel={()=>setEmailModal(prev=>({ ...prev, open:false }))}
-          width={520}
+          width={960}
           footer={[
             <Button key="cancel" onClick={()=>setEmailModal(prev=>({ ...prev, open:false }))}>Cancelar</Button>,
-            <Button key="send" type="primary" loading={emailModal.sending} disabled={!emailOk} onClick={handleSendEmail}>Enviar</Button>
+            <Button key="send" type="primary" loading={emailModal.sending} disabled={!emailModal.pdfBase64 || !emailModal.to} onClick={handleSendEmail}>Enviar</Button>
           ]}
         >
           <div style={{ marginBottom: 12 }}>
@@ -680,125 +602,123 @@
               onChange={(e)=>setEmailModal(prev=>({ ...prev, to:e.target.value }))}
             />
           </div>
+          <div style={{ border:'1px solid #eee', height: '70vh' }}>
+            {emailModal.pdfUrl ? (
+              <iframe src={emailModal.pdfUrl} title="Vista previa" style={{ width:'100%', height:'100%', border:0 }} />
+            ) : (
+              <div style={{ padding:16 }}>Generando vista previa...</div>
+            )}
+          </div>
         </antd.Modal>
 
         <Tabs activeKey={activeKey} onChange={setActiveKey}>
           {/* ===== Tab Ventas ===== */}
           <Tabs.TabPane tab="Reporte de ventas" key="ventas">
             <Card size="small" extra={<Button onClick={fetchVentas}>Refrescar</Button>}>
+            {/* FILTROS (iguales a gastos) */}
+            <Collapse defaultActiveKey={[] } style={{ marginBottom: 12 }}>
+              <Collapse.Panel header="Filtros" key="filtrosV" extra={<span><Button onClick={openEmailModalVentas} style={{marginRight:8}}>Compartir por correo</Button><Button onClick={openEmailModalVentas} style={{marginRight:8}}>Compartir por correo</Button><Button onClick={handleDownloadPDFVentas}>Descargar PDF</Button></span>}>
+                <Card size="small">
+                  <Row gutter={[12,12]} align="middle">
+                    <Col xs={24} md={6}>
+                      <label>Periodo</label>
+                      <Select
+                        style={{ width:'100%' }}
+                        value={filtrosV.periodo}
+                        onChange={(v)=>{ setFiltrosV(prev=>({ ...prev, periodo:v })); }}
+                        options={periodOptions}
+                      />
+                    </Col>
 
-              {/* KPIs ventas */}
-              <Row gutter={[12,12]} style={{ marginBottom: 12 }}>
-                {KPIsV.map(k => (
-                  <Col xs={24} md={8} key={k.label}>
-                    <Card size="small">
-                      <Statistic title={k.label} value={k.value} />
-                    </Card>
-                  </Col>
-                ))}
-              </Row>
+                    <Col xs={24} md={6}>
+                      <label>Año</label>
+                      <Input
+                        type="number"
+                        value={filtrosV.anio}
+                        min={2000} max={2100}
+                        onChange={(e)=>{ const val=Number(e.target.value||0); setFiltrosV(p=>({ ...p, anio: val })); }}
+                        onPressEnter={()=>{}}
+                      />
+                    </Col>
 
-              {/* FILTROS VENTAS */}
-              <Collapse defaultActiveKey={[]} style={{ marginBottom: 12 }}>
-                <Collapse.Panel header="Filtros" key="filtrosV" extra={
-                  <Space>
-                    <Button onClick={openEmailModalVentas}>Compartir por correo</Button>
-                    <Button onClick={handleDownloadPDFVentas}>Descargar PDF</Button>
-                  </Space>
-                }>
-                  <Card size="small">
-                    <Row gutter={[12,12]} align="middle">
+                    {/* Controles condicionales como en gastos */}
+                    { (filtrosV.periodo==='mensual' || filtrosV.periodo==='quincenal') && (
                       <Col xs={24} md={6}>
-                        <label>Periodo</label>
+                        <label>Mes</label>
                         <Select
                           style={{ width:'100%' }}
-                          value={filtrosV.periodo}
-                          onChange={(v)=>{ setFiltrosV(prev=>({ ...prev, periodo:v })); }}
-                          options={periodOptions}
+                          value={filtrosV.mes}
+                          onChange={(v)=>{ const val=Number(v); setFiltrosV(p=>({ ...p, mes: val })); }}
+                          options={[
+                            {value:1,label:'Enero'},{value:2,label:'Febrero'},{value:3,label:'Marzo'},{value:4,label:'Abril'},
+                            {value:5,label:'Mayo'},{value:6,label:'Junio'},{value:7,label:'Julio'},{value:8,label:'Agosto'},
+                            {value:9,label:'Septiembre'},{value:10,label:'Octubre'},{value:11,label:'Noviembre'},{value:12,label:'Diciembre'}
+                          ]}
                         />
                       </Col>
+                    )}
 
+                    { filtrosV.periodo==='quincenal' && (
                       <Col xs={24} md={6}>
-                        <label>Año</label>
+                        <label>Quincena</label>
+                        <Select
+                          style={{ width:'100%' }}
+                          value={filtrosV.quincena}
+                          onChange={(v)=> setFiltrosV(p=>({ ...p, quincena: Number(v)===2?2:1 }))}
+                          options={[{label:'1a (1-15)',value:1},{label:'2a (16-fin)',value:2}]}
+                        />
+                      </Col>
+                    )}
+
+                    { (filtrosV.periodo==='semanal' || filtrosV.periodo==='diario') && (
+                      <Col xs={24} md={6}>
+                        <label>Fecha de referencia</label>
                         <Input
-                          type="number"
-                          value={filtrosV.anio}
-                          min={2000} max={2100}
-                          onChange={(e)=>{ const val=Number(e.target.value||0); setFiltrosV(p=>({ ...p, anio: val })); }}
+                          type="date"
+                          value={filtrosV.fechaRef}
+                          onChange={(e)=>{ const val=e.target.value; setFiltrosV(p=>({ ...p, fechaRef: val })); }}
                           onPressEnter={()=>{}}
                         />
                       </Col>
+                    )}
 
-                      {(filtrosV.periodo==='mensual') && (
-                        <Col xs={24} md={6}>
-                          <label>Mes</label>
-                          <Select
-                            style={{ width:'100%' }}
-                            value={filtrosV.mes}
-                            onChange={(v)=>{ const val=Number(v); setFiltrosV(p=>({ ...p, mes: val })); }}
-                            options={monthOptions}
-                          />
-                        </Col>
-                      )}
+                    <Col xs={24} md={8}>
+                      <label>Sucursal</label>
+                      <Select
+                        allowClear
+                        style={{ width:'100%' }}
+                        value={filtrosV.nombreSucursal||undefined}
+                        onChange={(v)=> setFiltrosV(p=>({ ...p, nombreSucursal: v||'' }))}
+                        options={(sucursales||[]).map(s => ({ value: s, label: s }))}
+                        placeholder="Todas"
+                      />
+                    </Col>
 
-                      {(filtrosV.periodo==='semanal' || filtrosV.periodo==='diario' || filtrosV.periodo==='quincenal') && (
-                        <Col xs={24} md={6}>
-                          <label>Fecha de referencia</label>
-                          <Input
-                            type="date"
-                            value={filtrosV.fechaRef}
-                            onChange={(e)=>{ const val=e.target.value; setFiltrosV(p=>({ ...p, fechaRef: val })); }}
-                            onPressEnter={()=>{}}
-                          />
-                        </Col>
-                      )}
-
-                      <Col xs={24} md={8}>
-                        <label>Sucursal</label>
-                        <Select
-                          allowClear
-                          style={{ width:'100%' }}
-                          value={filtrosV.nombreSucursal||undefined}
-                          onChange={(v)=> setFiltrosV(p=>({ ...p, nombreSucursal: v||'' }))}
-                          options={(sucursales||[]).map(s => ({ value: s, label: s }))}
-                          placeholder="Todas"
-                        />
-                      </Col>
-
-                      <Col xs={24} md={18}>
-                        <label>Servicio</label>
-                        <Select
-                          style={{ width:'100%', minWidth: 520 }}
-                          dropdownMatchSelectWidth={700}
-                          dropdownStyle={{ minWidth: 700, maxWidth: 900, whiteSpace: 'normal' }}
-                          dropdownClassName="rep-serv-dropdown"
-                          popupClassName="rep-serv-dropdown"
-                          showSearch
-                          allowClear
-                          placeholder="Todos"
-                          value={filtrosV.q || undefined}
-                          options={(servicios||[]).map(s => ({ value: s, label: s }))}
-                          filterOption={(input, option) => String((option && option.label) || '').toLowerCase().includes(String(input||'').toLowerCase())}
-                          onChange={(val)=> setFiltrosV(p=>({ ...p, q: val || '' }))}
-                        />
-                      </Col>
-
-                      <Col xs={24}>
-                        <Space>
-                          <Button type="primary" onClick={()=>fetchVentas()} loading={loadingVentas}>Actualizar</Button>
-                          <Button onClick={openEmailModalVentas}>Compartir por correo</Button>
-                          <Button onClick={handleDownloadPDFVentas}>Descargar PDF</Button>
-                          <Button onClick={resetFiltrosV} danger ghost>Borrar filtros</Button>
-                        </Space>
-                      </Col>
-                    </Row>
-                  </Card>
-                </Collapse.Panel>
-              </Collapse>
-
+                    <Col xs={24} md={8}>
+                      <label>Búsqueda</label>
+                      <Input
+                        placeholder="Descripción"
+                        value={filtrosV.q}
+                        onChange={(e)=> setFiltrosV(p=>({ ...p, q: e.target.value||'' }))}
+                        onPressEnter={()=>{}}
+                      />
+                    </Col>
+                  </Row>
+                
+                    <Col xs={24}>
+                      <Space>
+                        <Button type="primary" onClick={()=>fetchVentas()} loading={loadingVentas}>Actualizar</Button>
+                        <Button onClick={openEmailModalVentas} style={{marginRight:8}}>Compartir por correo</Button><Button onClick={handleDownloadPDFVentas}>Descargar PDF</Button>
+                        <Button onClick={resetFiltrosV} danger ghost>Borrar filtros</Button>
+                      </Space>
+                    </Col>
+</Card>
+              </Collapse.Panel>
+            </Collapse>
+    
               <Table
                 size="middle"
-                rowKey={(_,i)=> 'rv-'+i}
+                rowKey={function(_,i){ return 'rv-'+i; }}
                 columns={colsVentas}
                 dataSource={ventasFiltradas}
                 loading={loadingVentas}
@@ -827,10 +747,10 @@
                 header="Filtros"
                 key="filtros"
                 extra={
-                  <Space>
+                  <space>
                     <Button onClick={openEmailModalGastos} style={{marginRight:8}}>Compartir por correo</Button>
                     <Button onClick={handleDownloadPDF}>Descargar PDF</Button>
-                  </Space>
+                  </space>
                 }
               >
                 <Card size="small">
@@ -855,7 +775,7 @@
                       />
                     </Col>
 
-                    {showMesG && (
+                    {showMes && (
                       <Col xs={24} md={6}>
                         <label>Mes</label>
                         <Select
@@ -867,7 +787,7 @@
                       </Col>
                     )}
 
-                    {showQuincenaG && (
+                    {showQuincena && (
                       <Col xs={24} md={6}>
                         <label>Quincena</label>
                         <Select
@@ -879,7 +799,7 @@
                       </Col>
                     )}
 
-                    {showFechaRefG && (
+                    {showFechaRef && (
                       <Col xs={24} md={6}>
                         <label>Fecha</label>
                         <Input
@@ -925,8 +845,7 @@
                     <Col xs={24}>
                       <Space>
                         <Button type="primary" onClick={()=>fetchGastos()} loading={loadingGastos}>Actualizar</Button>
-                        <Button onClick={openEmailModalGastos} style={{marginRight:8}}>Compartir por correo</Button>
-                        <Button onClick={handleDownloadPDF}>Descargar PDF</Button>
+                        <Button onClick={openEmailModalGastos} style={{marginRight:8}}>Compartir por correo</Button><Button onClick={handleDownloadPDF}>Descargar PDF</Button>
                         <Button onClick={resetFiltros} danger ghost>Borrar filtros</Button>
                       </Space>
                     </Col>
@@ -935,11 +854,22 @@
               </Collapse.Panel>
             </Collapse>
 
-            {/* TABLA GASTOS */}
+            {/* KPIs duplicados (ocultos, conservados por si los usas luego) */}
+            <Row gutter={[12,12]} style={{ display:'none' }}>
+              {KPIsG.map(k => (
+                <Col xs={24} md={8} key={'dup-'+k.label}>
+                  <Card size="small">
+                    <Statistic title={k.label} value={k.value} />
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+
+            {/* TABLA */}
             <Card size="small">
               <Table
                 size="middle"
-                rowKey={(r,i)=> r && r.id ? `rg-${r.id}` : `rg-${i}`}
+                rowKey={function(r,i){ return r && r.id ? `rg-${r.id}` : `rg-${i}`; }}
                 loading={loadingGastos}
                 dataSource={gastos}
                 columns={colsGastos}
@@ -967,5 +897,3 @@
     }
   })();
 </script>
-
-

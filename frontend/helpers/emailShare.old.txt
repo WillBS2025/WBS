@@ -1,0 +1,60 @@
+
+/** frontend/helpers/emailShare.js
+ * Lógica reutilizable para: generar PDF (ventas/gastos) y enviar por Gmail API (Apps Script Advanced Service)
+ * Requiere: antd.message, google.script.run
+ */
+(function(global){
+  const EmailShare = {};
+
+  EmailShare.getPdfBase64 = function(tipo, filtros, meta){
+    return new Promise(function(resolve, reject){
+      try{
+        if (!(google && google.script && google.script.run)) return reject(new Error('google.script.run no disponible'));
+        const run = google.script.run.withSuccessHandler(function(res){
+          try{
+            const r = (typeof res === 'string') ? JSON.parse(res) : (res || {});
+            if (r && r.ok && (r.base64 || r.fileUrl)){
+              resolve(r);
+            } else { reject(new Error((r && r.message) || 'No se pudo generar el PDF')); }
+          }catch(err){ reject(err); }
+        }).withFailureHandler(function(err){ reject(err); });
+        if (tipo === 'ventas'){
+          run.generarReporteVentasPDF_Lite(filtros, meta || {});
+        } else if (tipo === 'gastos'){
+          run.generarReporteGastosPDF_Lite(filtros, meta || {});
+        } else {
+          reject(new Error('Tipo de reporte no soportado: '+tipo));
+        }
+      }catch(e){ reject(e); }
+    });
+  };
+
+  EmailShare.base64ToBlobUrl = function(base64, mime){
+    mime = mime || 'application/pdf';
+    const byteChars = atob(String(base64||''));
+    const byteNumbers = new Array(byteChars.length);
+    for (let i=0;i<byteChars.length;i++){ byteNumbers[i] = byteChars.charCodeAt(i); }
+    const blob = new Blob([new Uint8Array(byteNumbers)], {type: mime});
+    return URL.createObjectURL(blob);
+  };
+
+  EmailShare.sendEmailGmail = function(payload){
+    // payload: { to, subject, htmlBody, filename, base64 }
+    return new Promise(function(resolve, reject){
+      try{
+        if (!(google && google.script && google.script.run)) return reject(new Error('google.script.run no disponible'));
+        google.script.run
+          .withSuccessHandler(function(res){
+            try{
+              const r = (typeof res === 'string') ? JSON.parse(res) : (res || {});
+              if (r && r.ok){ resolve(r); } else { reject(new Error((r && r.message) || 'Error al enviar correo')); }
+            }catch(err){ reject(err); }
+          })
+          .withFailureHandler(function(err){ reject(err); })
+          .sendReportEmailGmail(payload);
+      }catch(e){ reject(e); }
+    });
+  };
+
+  global.EmailShare = EmailShare;
+})(window);

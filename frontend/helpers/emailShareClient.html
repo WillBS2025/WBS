@@ -1,0 +1,49 @@
+<!-- Helper de cliente: se ejecuta SOLO en el navegador -->
+<script>
+(function (global) {
+  if (!global) return; // evita "window is not defined" si algo lo ejecutara en V8
+
+  var EmailShare = {};
+
+  // Llama al servidor para generar PDF (ventas o gastos) y devuelve base64
+  EmailShare.getPdfBase64 = function (tipo, filtros, meta) {
+    return new Promise(function (resolve, reject) {
+      var serverFn = (tipo === 'ventas')
+        ? 'generarReporteVentasPDF_Lite'
+        : 'generarReporteGastosPDF_Lite';
+
+      google.script.run
+        .withSuccessHandler(function(res){ try{ resolve(typeof res==='string'? JSON.parse(res) : res); } catch(e){ resolve(res); } })
+        .withFailureHandler(reject)[serverFn](filtros, meta);
+    });
+  };
+
+  // Convierte base64 a Blob URL para previsualización (solo navegador)
+  EmailShare.base64ToBlobUrl = function (base64) {
+    try {
+      var byteChars = atob(base64);
+      var bytes = new Uint8Array(byteChars.length);
+      for (var i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+      var blob = new Blob([bytes], { type: 'application/pdf' });
+      var urlFactory = (window.URL || window.webkitURL);
+      return urlFactory.createObjectURL(blob);
+    } catch (e) {
+      console.error('PDF preview error:', e);
+      return null;
+    }
+  };
+
+  // Envía el correo usando el backend (Gmail Advanced Service)
+  EmailShare.sendEmailGmail = function (payload) {
+    return new Promise(function (resolve, reject) {
+      google.script.run
+        .withSuccessHandler(function(res){ try{ resolve(typeof res==='string'? JSON.parse(res) : res); } catch(e){ resolve(res); } })
+        .withFailureHandler(reject)
+        .sendReportEmailGmail(payload);
+    });
+  };
+
+  // Expone en el navegador
+  global.EmailShare = EmailShare;
+})(typeof window !== 'undefined' ? window : null);
+</script>

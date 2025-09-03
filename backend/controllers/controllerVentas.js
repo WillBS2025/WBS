@@ -525,6 +525,12 @@ function crearVenta(payload){
           if (kd==='id_detalle' || kd==='iddetalle') vd = nextDetId++;
           else if (kd==='id_factura' || kd==='idfactura' || kd==='idventa') vd = id;
           else if (kd==='descripcion' || kd==='producto_servicio') vd = it.descripcion || '';
+          else if (kd==='categoria' || kd==='tipo' || kd==='categoria_item') {
+            var _t = String(it.tipo||it.categoria||'').toLowerCase();
+            if (_t==='servicio' || _t==='servicios') vd = 'servicio';
+            else if (_t==='producto' || _t==='productos') vd = 'producto';
+            else vd = _t || '';
+          }
           else if (kd==='cantidad') vd = Number(it.cantidad||0);
           else if (kd==='precio') vd = Number(it.precio||0);
           else if (kd==='sub_total' || kd==='subtotal') vd = Number((it.cantidad||0)*(it.precio||0));

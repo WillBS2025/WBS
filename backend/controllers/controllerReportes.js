@@ -13,6 +13,19 @@ function __R_norm__(s){
 function __R_head__(sh){
   return sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(String);
 }
+
+function __R_dateOnly__(v){
+  try{
+    if (v && typeof v.getFullYear === 'function'){
+      var tz = (typeof Session!=='undefined' && Session.getScriptTimeZone && Session.getScriptTimeZone()) || 'America/Guatemala';
+      return Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+    }
+  }catch(e){}
+  var s = String(v||'');
+  // If it's like '25/8/2025 1:43:28', take the date part before space
+  if (s.indexOf(' ')>=0) return s.split(' ')[0];
+  return s;
+}
 function __R_map__(head){
   var m={};
   for (var i=0;i<head.length;i++){ m[__R_norm__(head[i])] = i; }
@@ -61,16 +74,22 @@ function bootstrapReportesVentas(){
     var idxPrecio = dM['precio'];
     var idxTotal = (dM['total']!=null) ? dM['total'] : ((dM['sub_total']!=null)?dM['sub_total']:-1);
 
+    var idxCategoria = (dM['categoria']!=null)?dM['categoria']:-1;
+
     var idxIdFacturaF = (fM['id_factura']!=null)?fM['id_factura']:-1;
-    var idxMetodo = (fM['metododepago']!=null)?fM['metododepago'] : ((fM['metodopago']!=null)?fM['metodopago'] : ((fM['metodo_pago']!=null)?fM['metodo_pago']:-1));
+    var idxMetodo = (fM['metododepago']!=null)?fM['metododepago'] : ((fM['metodo_pago']!=null)?fM['metodo_pago']:-1);
+    var idxFecha = (fM['fecha']!=null)?fM['fecha']:-1;
+    var idxSucursal = (fM['sucursal']!=null)?fM['sucursal']:-1;
 
     var facturasMap = {};
     if (idxIdFacturaF >= 0){
       for (var i=1;i<facVals.length;i++){
         var fr = facVals[i];
         var idf = fr[idxIdFacturaF];
-        var mp = (idxMetodo>=0) ? fr[idxMetodo] : '';
-        facturasMap[String(idf)] = mp;
+        var mpv = (idxMetodo>=0)? fr[idxMetodo] : '';
+        var fch = (idxFecha>=0)? fr[idxFecha] : '';
+        var fchStr = __R_dateOnly__(fch);
+        facturasMap[String(idf)] = { metodo_pago: String(mpv||''), fecha: String(fchStr||''), sucursal: String((idxSucursal>=0? fr[idxSucursal] : '')||'') };
       }
     }
 
@@ -79,12 +98,15 @@ function bootstrapReportesVentas(){
       var row = detVals[r];
       var n = (idxIdDetalle>=0 ? row[idxIdDetalle] : r);
       var idf = (idxIdFacturaD>=0 ? row[idxIdFacturaD] : '');
+      var cat = (idxCategoria>=0 ? String(row[idxCategoria]||'') : '');
+      var _ncat = __R_norm__(cat);
+      if (_ncat.indexOf('servici') === -1) { continue; }
       var desc = (idxDesc>=0 ? row[idxDesc] : '');
       var cant = Number(idxCant>=0 ? row[idxCant] : 0) || 0;
       var pre  = Number(idxPrecio>=0 ? row[idxPrecio] : 0) || 0;
       var tot  = (idxTotal>=0 ? Number(row[idxTotal]||0) : (cant*pre));
-      var mp   = facturasMap[String(idf)] || '';
-      out.push({ n:n, descripcion:String(desc||''), cantidad:cant, precio:pre, total_linea:tot, metodo_pago:String(mp||'') });
+      var info = facturasMap[String(idf)] || {};
+      out.push({ n:n, fecha:String(info.fecha||''), descripcion:String(desc||''), cantidad:cant, precio:pre, total_linea:tot, metodo_pago:String(info.metodo_pago||''), sucursal:String(info.sucursal||'') });
     }
     return JSON.stringify({ ok:true, data: out });
   }catch(err){
