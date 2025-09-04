@@ -423,7 +423,7 @@ function Suministros() {
     google.script.run
       .withSuccessHandler(function(res){
         var r = safeParse(res);
-        if (r && r.ok) { message.success('Compra registrada'); setModalOpen(false); cargarTodo(); }
+      if (r && r.ok) { message.success('Compra registrada'); setModalOpen(false); cargarTodo(); }
         else { Modal.error({ title: 'No se pudo crear', content: (r && r.message) || 'Error desconocido' }); setLoading(false); }
       })
       .withFailureHandler(function(err){
@@ -665,7 +665,13 @@ function Suministros() {
     { title:'No.', dataIndex:'idSuministro', key:'idSuministro', width:90,
       sorter:function(a,b){ return Number(a.idSuministro)-Number(b.idSuministro); } },
     { title:'Nombre', dataIndex:'nombreSuministro', key:'nombreSuministro' },
-    { title:'Unidad base', dataIndex:'unidadBase', key:'unidadBase', width:130 },
+
+    // *** OCULTAR "UNIDAD BASE" EN TABLA (SIN ELIMINAR COLUMNA NI DATOS) ***
+    { title:'Unidad base', dataIndex:'unidadBase', key:'unidadBase', width:0,
+      onHeaderCell: function(){ return { style:{ display:'none' } }; },
+      onCell: function(){ return { style:{ display:'none' } }; }
+    },
+
     { title:'Categoría', dataIndex:'categoria', key:'categoria', width:140 },
     { title:'Min. stock', dataIndex:'minStock', key:'minStock', align:'right', width:0,
       onHeaderCell: function(){ return { style:{ display:'none' } }; },
@@ -746,8 +752,8 @@ function Suministros() {
           .sum-kpi-val{ font-size:26px; font-weight:800; color:#0f172a }
 
           /* Centrado de tablas y look & feel pastel */
-          .tbl-center { max-width: 1200px; margin: 0 auto; }            /* (mantengo tu clase existente) */
-          .month-inline { display:flex; gap:8px; align-items:center; }  /* (mantengo tu clase existente) */
+          .tbl-center { max-width: 1200px; margin: 0 auto; }
+          .month-inline { display:flex; gap:8px; align-items:center; }
 
           .suministros-wrap .sum-table .ant-table{ border-radius:14px; overflow:hidden; }
           .suministros-wrap .sum-table .ant-table-thead > tr > th{
@@ -1061,13 +1067,14 @@ function Suministros() {
             </Form.Item>
             <Row gutter={12}>
               <Col span={12}>
-                <Form.Item name="unidadBase" label="Unidad base">
-                  <Input placeholder="rollo, bolsa, botella... o un número (p. ej. 50)" />
+                <Form.Item name="categoria" label="Categoría">
+                  <Input placeholder="Limpieza, Bebidas..." />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="categoria" label="Categoría">
-                  <Input placeholder="Limpieza, Bebidas..." />
+                {/* *** OCULTAR CAMPO DE UNIDAD BASE EN NUEVO SUMINISTRO (SIN ELIMINARLO) *** */}
+                <Form.Item name="unidadBase" label="Unidad base" style={{ display:'none' }}>
+                  <Input placeholder="rollo, bolsa, botella... o un número (p. ej. 50)" />
                 </Form.Item>
               </Col>
             </Row>
@@ -1102,13 +1109,14 @@ function Suministros() {
 
             <Row gutter={12}>
               <Col span={12}>
-                <Form.Item name="unidadBase" label="Unidad base">
-                  <Input placeholder="rollo, bolsa, botella... o un número (p. ej. 50)" />
+                <Form.Item name="categoria" label="Categoría">
+                  <Input />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="categoria" label="Categoría">
-                  <Input />
+                {/* *** OCULTAR CAMPO DE UNIDAD BASE EN EDITAR SUMINISTRO (SIN ELIMINARLO) *** */}
+                <Form.Item name="unidadBase" label="Unidad base" style={{ display:'none' }}>
+                  <Input placeholder="rollo, bolsa, botella... o un número (p. ej. 50)" />
                 </Form.Item>
               </Col>
             </Row>
