@@ -67,16 +67,53 @@ function actualizarEmpleado(empleado){
 
 function eliminarEmpleado(id_empleado){
   try{
-    var sh = obtenerSheet(SHEET_EMPLEADOS);
-    var headers = sh.getDataRange().getValues()[0].map(String);
-    var idxId = headers.indexOf('id_empleado');
-    var data = sh.getDataRange().getValues(); data.shift();
-    var target = null;
-    for (var r=0;r<data.length;r++){ if (String(data[r][idxId])===String(id_empleado)){ target=r+2; break; } }
-    if (!target) return JSON.stringify({ok:false, message:'No encontrado'});
-    sh.deleteRow(target);
+    var shEmp = obtenerSheet(SHEET_EMPLEADOS);
+    var values = shEmp.getDataRange().getValues();
+    if (!values || values.length < 2) return JSON.stringify({ok:false, message:'No encontrado'});
+    var head = values[0].map(String);
+    var idxId = head.indexOf('id_empleado');
+    var idxNom = head.indexOf('nombre_empleado');
+    var targetRow = -1;
+    var nombreEmpleado = '';
+
+    for (var i=1;i<values.length;i++){
+      if (String(values[i][idxId]) === String(id_empleado)){
+        targetRow = i + 1; // 1-based row index
+        nombreEmpleado = String(idxNom>=0 ? values[i][idxNom] : '');
+        break;
+      }
+    }
+    if (targetRow < 0) return JSON.stringify({ok:false, message:'No encontrado'});
+
+    // 1) Eliminar empleado
+    shEmp.deleteRow(targetRow);
+
+    // 2) Eliminar usuario donde nombreCompleto === nombre_empleado
+    try{
+      var shUser = obtenerSheet(env_().SH_REGISTRO_USUARIOS);
+      var userData = shUser.getDataRange().getValues();
+      if (userData && userData.length > 1){
+        var headU = userData[0].map(String);
+        var idxNombreCompleto = headU.indexOf('nombreCompleto');
+        if (idxNombreCompleto >= 0 && nombreEmpleado){
+          var toDelete = [];
+          for (var r=1;r<userData.length;r++){
+            var nombreCompleto = String(userData[r][idxNombreCompleto] || '');
+            if (nombreCompleto.trim().toLowerCase() === String(nombreEmpleado).trim().toLowerCase()){
+              toDelete.push(r+1); // convert to 1-based row index
+            }
+          }
+          // borrar de abajo hacia arriba para evitar desfasar índices
+          toDelete.sort(function(a,b){ return b-a; });
+          for (var j=0;j<toDelete.length;j++){ shUser.deleteRow(toDelete[j]); }
+        }
+      }
+    }catch(ignore){ /* No bloquear si falla el borrado del usuario */ }
+
     return JSON.stringify({ok:true});
-  }catch(e){ return JSON.stringify({ok:false, message:e.message}); }
+  }catch(e){
+    return JSON.stringify({ok:false, message:e.message});
+  }
 }
 
 

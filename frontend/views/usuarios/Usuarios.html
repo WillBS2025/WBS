@@ -98,7 +98,7 @@ function Usuarios() {
       nombreCompleto: record.nombreCompleto,
       correo: record.correo,
       nombreSucursal: record.nombreSucursal,
-      contrasenia: '',
+      contrasenia: record.contrasenia,
       rol: record.rol,
       estado: record.estado,
       nombre_usuario: record.nombre_usuario,
@@ -114,7 +114,7 @@ function Usuarios() {
         id: values.id || undefined,
         nombreCompleto: values.nombreCompleto,
         nombre_usuario: values.nombre_usuario,
-        contrasenia: values.contrasenia || '',
+        contrasenia: values.contrasenia,
         rol: values.rol,
         estado: values.estado,
         nombreSucursal: values.nombreSucursal,
@@ -334,9 +334,9 @@ function Usuarios() {
           <Form.Item
             name="contrasenia"
             label="Contraseña"
-            rules={mode==='create'?[{ required:true, message:'Ingresa una contraseña' }]:[]}
+            rules={[{ required:true, message:'Ingresa una contraseña' }]}
           >
-            <Input.Password placeholder={mode==='create'?'Nueva contraseña':'(Opcional) nueva contraseña'} />
+            <Input.Password placeholder='Contraseña' />
           </Form.Item>
           <Form.Item name="nombreSucursal" label="Sucursal" rules={[{ required:true, message:'Selecciona una sucursal' }]}>
             <Select placeholder="Selecciona sucursal...">
