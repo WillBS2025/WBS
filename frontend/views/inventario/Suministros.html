@@ -58,10 +58,20 @@ function Suministros() {
     return [];
   }
 
+  // === PATCH FECHAS (UI) ===
+  function isYMD(str){ return typeof str === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(str); }
+  /** Si es 'YYYY-MM-DD' -> Date local fija (sin shift); si no, intenta new Date() */
+  function parseYMD(d) {
+    if (!d) return null;
+    if (isYMD(d)) { var p = d.split('-'); return new Date(+p[0], +p[1]-1, +p[2]); }
+    var dt = new Date(d);
+    return isNaN(dt) ? null : dt;
+  }
+  /** Mostrar bonita YYYY/MM/DD a partir de Date local */
   function formatNice(d){
     if (!d) return '';
-    var dt = new Date(d);
-    if (isNaN(dt)) return String(d);
+    var dt = parseYMD(d);
+    if (!dt) return String(d);
     var y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), day = String(dt.getDate()).padStart(2,'0');
     return y + '/' + m + '/' + day;
   }
@@ -69,11 +79,6 @@ function Suministros() {
     var n = Number(value); if (!isFinite(n)) n = 0;
     try { return 'L.' + new Intl.NumberFormat('en-US',{ minimumFractionDigits:2, maximumFractionDigits:2 }).format(n); }
     catch(e){ return 'L.' + n.toFixed(2); }
-  }
-  function parseYMD(d) {
-    if (!d) return null;
-    var dt = new Date(d);
-    return isNaN(dt) ? null : dt;
   }
   function diffDaysInclusive(a, b) {
     var da = parseYMD(a), db = parseYMD(b);
@@ -94,11 +99,13 @@ function Suministros() {
     if (!d) return null;
     return cant / d;
   }
+  /** Para inputs <input type="date"> */
   function asInputYMD(d){
     if (!d) return '';
-    var dt = new Date(d); if (isNaN(dt)) return '';
+    if (isYMD(d)) return d;
+    var dt = parseYMD(d); if (!dt) return '';
     var y = dt.getFullYear(), m = String(dt.getMonth()+1).padStart(2,'0'), day = String(dt.getDate()).padStart(2,'0');
-    return y - 0 + '-' + m + '-' + day;
+    return y + '-' + m + '-' + day;
   }
   function todayYMD(){
     var dt = new Date();
@@ -113,11 +120,11 @@ function Suministros() {
     return isFinite(v) ? v : null;
   }
 
-  // NUEVO: helpers para clave de mes (YYYY-MM)
+  // NUEVO: helpers para clave de mes (YYYY-MM) con parse seguro
   function monthKeyFromDate(d){
     if (!d) return '';
-    var dt = new Date(d);
-    if (isNaN(dt)) return '';
+    var dt = parseYMD(d);
+    if (!dt) return '';
     return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0');
   }
   function currentMonthKey(){
@@ -335,7 +342,7 @@ function Suministros() {
   var kpiCom_gasto = sumBy(filtered, function(c){ return c.costoTotal; });
   var kpiCom_enUso = filtered.filter(function(c){ return (c.estado || estadoLote(c)) === 'EN_USO'; }).length;
 
-  // KPI UI (mismo patrón visual que Sucursales/Servicios)
+  // KPI UI
   function useCountUp(value, duration=700){
     const [display, setDisplay] = useState(0);
     const prevRef = useRef(0);
@@ -356,7 +363,7 @@ function Suministros() {
     }, [value, duration]);
     return display;
   }
-  function KPI({ title, value, money, accent='#e0eaff' }){
+  function KPI({ title, value, money }) {
     const v = useCountUp(value);
     return (
       <Card bodyStyle={{ padding: 14 }} className="sum-kpi fade-in">
@@ -413,7 +420,7 @@ function Suministros() {
     var payload = {
       idSuministro: values.idSuministro,
       sucursal: values.sucursal,
-      fechaCompra: values.fechaCompra,
+      fechaCompra: values.fechaCompra, // 'YYYY-MM-DD'
       cantidadUnidades: Number(values.cantidadUnidades || 0),
       costoTotal: Number(values.costoTotal || 0),
       fechaInicioUso: values.fechaInicioUso || '',
@@ -423,7 +430,7 @@ function Suministros() {
     google.script.run
       .withSuccessHandler(function(res){
         var r = safeParse(res);
-      if (r && r.ok) { message.success('Compra registrada'); setModalOpen(false); cargarTodo(); }
+        if (r && r.ok) { message.success('Compra registrada'); setModalOpen(false); cargarTodo(); }
         else { Modal.error({ title: 'No se pudo crear', content: (r && r.message) || 'Error desconocido' }); setLoading(false); }
       })
       .withFailureHandler(function(err){
@@ -453,7 +460,7 @@ function Suministros() {
       idCompra: values.idCompra,
       idSuministro: values.idSuministro,
       sucursal: values.sucursal,
-      fechaCompra: values.fechaCompra,
+      fechaCompra: values.fechaCompra, // 'YYYY-MM-DD'
       cantidadUnidades: Number(values.cantidadUnidades || 0),
       costoTotal: Number(values.costoTotal || 0),
       fechaInicioUso: values.fechaInicioUso || '',
@@ -746,12 +753,12 @@ function Suministros() {
           }
           @keyframes sumSpark{ 0%{opacity:.4; transform:translateY(0)} 50%{opacity:1; transform:translateY(6px)} 100%{opacity:.4; transform:translateY(0)} }
 
-          /* KPIs estilo tiles (como Sucursales/Servicios) */
+          /* KPIs estilo tiles */
           .sum-kpi{ border-radius:14px; background: linear-gradient(135deg,#e0eaff,#e9fff6); box-shadow: 0 2px 10px rgba(15,23,42,.06); }
           .sum-kpi-sub{ font-size:12px; color:#6b7280 }
           .sum-kpi-val{ font-size:26px; font-weight:800; color:#0f172a }
 
-          /* Centrado de tablas y look & feel pastel */
+          /* Centrado de tablas y look pastel */
           .tbl-center { max-width: 1200px; margin: 0 auto; }
           .month-inline { display:flex; gap:8px; align-items:center; }
 
@@ -769,7 +776,7 @@ function Suministros() {
           }
           .suministros-wrap .sum-table .ant-table-tbody > tr:nth-child(odd) td{ background:#fcfdff; }
 
-          /* Estado fila bloqueada (ya tenías rowClassName) */
+          /* Estado fila bloqueada */
           .suministros-wrap .row-bloqueado td{ background:#f9fafb !important; color:#64748B; }
         `}</style>
 
@@ -844,7 +851,7 @@ function Suministros() {
               <Col xs={24} sm={8}><KPI title="Lotes en uso" value={kpiCom_enUso} /></Col>
             </Row>
 
-            {/* === FILTROS COMPRAS (se mantiene igual) === */}
+            {/* === FILTROS COMPRAS === */}
             <Row gutter={[12,12]} align="bottom">
               <Col xs={24} md={8}>
                 <label style={{ display:'block', marginBottom:4 }}>Buscar por suministro</label>
@@ -874,7 +881,7 @@ function Suministros() {
               </Col>
             </Row>
 
-            {/* NUEVO: fila adicional con filtro de Mes (sin tocar la fila anterior) */}
+            {/* Filtro Mes */}
             <Row gutter={[12,12]} align="bottom" style={{ marginTop: 8 }}>
               <Col xs={24} md={8}>
                 <label style={{ display:'block', marginBottom:4 }}>Mes</label>

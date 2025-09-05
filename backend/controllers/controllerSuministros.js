@@ -5,8 +5,8 @@
  ************************************************************/
 
 // ====== CONFIG DESDE env_() ======
-var SHEET_SUMINISTROS       = (typeof env_ === 'function' && env_().SH_SUMINISTROS)            || 'Suministros';
-var SHEET_COMPRAS_SUMINISTROS = (typeof env_ === 'function' && env_().SH_COMPRAS_SUMINISTROS)  || 'ComprasSuministros';
+var SHEET_SUMINISTROS         = (typeof env_ === 'function' && env_().SH_SUMINISTROS)           || 'Suministros';
+var SHEET_COMPRAS_SUMINISTROS = (typeof env_ === 'function' && env_().SH_COMPRAS_SUMINISTROS)   || 'ComprasSuministros';
 var DB_ID = (typeof env_ === 'function' && env_().ID_DATABASE) || '';
 
 // ====== HELPERS ======
@@ -28,19 +28,41 @@ function headersIndex_(headers, name) {
   var i = headers.indexOf(name);
   return (i >= 0 ? i : -1);
 }
-function toYMD_(dateOrString) {
+
+/** === PATCH FECHAS: helpers seguros de zona horaria === */
+function _scriptTZ_() {
+  try {
+    return (Session && Session.getScriptTimeZone && Session.getScriptTimeZone()) || 'America/Tegucigalpa';
+  } catch (e) {
+    return 'America/Tegucigalpa';
+  }
+}
+/** Si ya es 'YYYY-MM-DD' devuelve tal cual; si es Date u otro, formatea en TZ del script. */
+function toYMD_(dateOrString, tz) {
   if (!dateOrString) return '';
+  if (typeof dateOrString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateOrString)) return dateOrString;
   var d = (dateOrString instanceof Date) ? dateOrString : new Date(dateOrString);
   if (isNaN(d)) return String(dateOrString);
-  var y = d.getFullYear();
-  var m = ('0' + (d.getMonth() + 1)).slice(-2);
-  var da = ('0' + d.getDate()).slice(-2);
-  return y + '-' + m + '-' + da; // ISO corto
+  var zone = tz || _scriptTZ_();
+  return Utilities.formatDate(d, zone, 'yyyy-MM-dd');
+}
+/** Parse seguro: 'YYYY-MM-DD' => Date local (sin shift UTC). */
+function parseYMD_(val) {
+  if (!val) return null;
+  if (val instanceof Date && !isNaN(val)) return new Date(val.getFullYear(), val.getMonth(), val.getDate());
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+    var p = val.split('-'); return new Date(+p[0], +p[1]-1, +p[2]);
+  }
+  var d = new Date(val);
+  return isNaN(d) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function todayYMD_() {
+  return Utilities.formatDate(new Date(), _scriptTZ_(), 'yyyy-MM-dd');
 }
 function diffDaysInclusive_(a, b) {
   if (!a || !b) return null;
-  var da = new Date(a), db = new Date(b);
-  if (isNaN(da) || isNaN(db)) return null;
+  var da = parseYMD_(a), db = parseYMD_(b);
+  if (!da || !db) return null;
   return Math.floor((db - da) / 86400000) + 1;
 }
 
@@ -161,14 +183,20 @@ function crearCompraSuministro(payloadStr) {
       }
     }
 
+    // === NORMALIZACIÓN FECHAS SIN SHIFT ===
+    var fCompra = (typeof p.fechaCompra === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.fechaCompra))
+      ? p.fechaCompra : toYMD_(p.fechaCompra);
+    var fInicio = (p.fechaInicioUso && typeof p.fechaInicioUso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.fechaInicioUso))
+      ? p.fechaInicioUso : (p.fechaInicioUso ? toYMD_(p.fechaInicioUso) : '');
+
     var row = [
       nextId,
       Number(p.idSuministro),
       p.sucursal,
-      toYMD_(p.fechaCompra),
+      fCompra,
       Number(p.cantidadUnidades || 0),
       Number(p.costoTotal || 0),
-      p.fechaInicioUso ? toYMD_(p.fechaInicioUso) : '',
+      fInicio,
       '', // fechaFinUso (vacío al crear)
       p.observaciones || ''
     ];
@@ -193,7 +221,7 @@ function marcarCompraAgotada(idCompra) {
 
     var range = sh.getRange(2, 1, lastRow - 1, 9); // A2:I
     var data = range.getValues();
-    var today = toYMD_(new Date());
+    var today = todayYMD_(); // *** usar TZ del script ***
     var found = false;
 
     for (var i = 0; i < data.length; i++) {
@@ -235,15 +263,23 @@ function actualizarCompraSuministro(payloadStr) {
     }
     if (rowIndex < 0) throw new Error('No se encontró idCompra ' + p.idCompra);
 
+    // === NORMALIZACIÓN FECHAS SIN SHIFT ===
+    var fCompra = (typeof p.fechaCompra === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.fechaCompra))
+      ? p.fechaCompra : toYMD_(p.fechaCompra);
+    var fInicio = (p.fechaInicioUso && typeof p.fechaInicioUso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.fechaInicioUso))
+      ? p.fechaInicioUso : (p.fechaInicioUso ? toYMD_(p.fechaInicioUso) : '');
+    var fFin = (p.fechaFinUso && typeof p.fechaFinUso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.fechaFinUso))
+      ? p.fechaFinUso : (p.fechaFinUso ? toYMD_(p.fechaFinUso) : '');
+
     var newRow = [
       Number(p.idCompra),
       Number(p.idSuministro),
       p.sucursal || '',
-      toYMD_(p.fechaCompra),
+      fCompra,
       Number(p.cantidadUnidades || 0),
       Number(p.costoTotal || 0),
-      p.fechaInicioUso ? toYMD_(p.fechaInicioUso) : '',
-      p.fechaFinUso ? toYMD_(p.fechaFinUso) : '',
+      fInicio,
+      fFin,
       p.observaciones || ''
     ];
 
@@ -266,7 +302,11 @@ function iniciarUsoCompra(idCompra, fechaYMD) {
     var range = sh.getRange(2, 1, last - 1, 9); // A..I
     var data = range.getValues();
     var found = false;
-    var fecha = toYMD_(fechaYMD || new Date());
+
+    // Si viene 'YYYY-MM-DD', úsala tal cual; si no, hoy (TZ script)
+    var fecha = (typeof fechaYMD === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fechaYMD))
+      ? fechaYMD
+      : todayYMD_();
 
     for (var i = 0; i < data.length; i++) {
       if (String(data[i][0]) === String(idCompra)) {
@@ -344,7 +384,7 @@ function crearSuministro(payloadStr) {
       Number(p.minStock || 0),
       p.estado || 'Activo',
       p.notas || ''
-    ]; // Columnas esperadas: A..G -> idSuministro, nombreSuministro, unidadBase, categoria, minStock, estado, notas
+    ]; // Columnas esperadas: A..G
 
     sh.appendRow(row);
     return JSON.stringify({ ok: true, idSuministro: nextId });
@@ -354,10 +394,6 @@ function crearSuministro(payloadStr) {
 }
 
 /****************** NUEVO: ACTUALIZAR SUMINISTRO (CATÁLOGO) ******************/
-/* ESTA FUNCIÓN COMPLEMENTA AL FRONT QUE LLAMA google.script.run.actualizarSuministro(...)
-   ENCUENTRA LA FILA POR idSuministro Y ACTUALIZA SOLO LAS COLUMNAS EXISTENTES:
-   idSuministro | nombreSuministro | unidadBase | categoria | minStock | estado | notas
-   DEVUELVE: { ok:true } O { ok:false, message } */
 function actualizarSuministro(payloadStr) {
   try {
     // ===== PARSEO DE ENTRADA =====
@@ -419,7 +455,6 @@ function actualizarSuministro(payloadStr) {
 
     return JSON.stringify({ ok:true });
   } catch (e) {
-    // *** ERRORES CLAROS PARA EL FRONT ***
     return JSON.stringify({ ok:false, message:'Error en actualizarSuministro: ' + (e && e.message ? e.message : String(e)) });
   }
 }
