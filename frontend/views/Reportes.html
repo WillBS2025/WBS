@@ -563,6 +563,8 @@
         { title:'Descripción', dataIndex:'descripcion', key:'descripcion', ellipsis:true },
         { title:'Cant.', dataIndex:'cantidad', key:'cantidad', width:90, align:'right' },
         { title:'Precio', dataIndex:'precio', key:'precio', width:110, align:'right', render:function(v){ return 'L.'+Number(v||0).toFixed(2); } },
+        { title:'Sub Total', dataIndex:'sub_total', key:'sub_total', width:120, align:'right', render:function(v){ return 'L.'+Number(v||0).toFixed(2); } },
+        { title:'Descuento', dataIndex:'descuento', key:'descuento', width:120, align:'right', render:function(v){ return 'L.'+Number(v||0).toFixed(2); } },
         { title:'Total línea', dataIndex:'total_linea', key:'total_linea', width:130, align:'right', render:function(v){ return 'L.'+Number(v||0).toFixed(2); } },
         { title:'Método de pago', dataIndex:'metodo_pago', key:'metodo_pago', width:160 }
       ];

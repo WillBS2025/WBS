@@ -1,0 +1,20 @@
+
+<script type="text/babel" data-presets="env,react">
+  class ErrorBoundary extends React.Component {
+    constructor(props){ super(props); this.state = { hasError:false, error:null }; }
+    static getDerivedStateFromError(error){ return { hasError:true, error:error }; }
+    componentDidCatch(error, info){ try{ console.error('React error:', error, info); }catch(_){ } }
+    render(){
+      if (this.state.hasError){
+        return (
+          <div style={{padding:16}}>
+            <h3 style={{margin:0}}>Algo salió mal</h3>
+            <p style={{opacity:.8, marginTop:4}}>Intenta actualizar esta vista o vuelve a la página anterior.</p>
+          </div>
+        );
+      }
+      return this.props.children;
+    }
+  }
+  window.ErrorBoundary = ErrorBoundary;
+</script>

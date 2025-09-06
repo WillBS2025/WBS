@@ -74,7 +74,7 @@ function RV_renderReporteVentasHTML_Lite(payload){
   var meta    = (payload && payload.meta)    || {};
   var filtros = (payload && payload.filtros) || {};
 
-  var titulo   = RV_htmlEsc_(meta.tituloBarberia || 'Reporte de Ventas');
+  var titulo = RV_htmlEsc_('Reporte de ventas');
   var usuario  = RV_htmlEsc_(meta.usuario || '');
   var generado = RV_fmtFechaES_((new Date().getFullYear())+'-'+('0'+(new Date().getMonth()+1)).slice(-2)+'-'+('0'+new Date().getDate()).slice(-2));
   var etiqueta = RV_htmlEsc_(RV_periodoEtiqueta_(filtros));
@@ -104,7 +104,7 @@ function RV_renderReporteVentasHTML_Lite(payload){
   h.push('</div>');
 
   h.push('<table>');
-  h.push('<thead><tr><th>Fecha</th><th>Descripción</th><th style="text-align:right">Cant.</th><th style="text-align:right">Precio</th><th style="text-align:right">Total línea</th><th>Método de pago</th><th>Sucursal</th></tr></thead>');
+  h.push('<thead><tr><th>Fecha</th><th>Descripción</th><th style="text-align:right">Cant.</th><th style="text-align:right">Precio</th><th style="text-align:right">Sub Total</th><th style="text-align:right">Descuento</th><th style="text-align:right">Total línea</th><th>Método de pago</th><th>Sucursal</th></tr></thead>');
   h.push('<tbody>');
   for (var i=0;i<list.length;i++){
     var r = list[i]||{};
@@ -113,13 +113,17 @@ function RV_renderReporteVentasHTML_Lite(payload){
     h.push('<td>'+RV_htmlEsc_(String(r.descripcion||''))+'</td>');
     h.push('<td style="text-align:right">'+(Number(r.cantidad||0)||0)+'</td>');
     h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(Number(r.precio||0)||0)+'</td>');
-    h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(Number(r.total_linea||0)||0)+'</td>');
-    h.push('<td>'+RV_htmlEsc_(String(r.metodo_pago||''))+'</td>');
+  var _sub = (typeof r.sub_total!=='undefined') ? Number(r.sub_total||0) : (Number(r.cantidad||0)*Number(r.precio||0));
+  var _des = (typeof r.descuento!=='undefined') ? Number(r.descuento||0) : Math.max(0, _sub - Number(r.total_linea||0));
+  h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(_sub)+'</td>');
+  h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(_des)+'</td>');
+  h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(Number(r.total_linea||0)||0)+'</td>');
+h.push('<td>'+RV_htmlEsc_(String(r.metodo_pago||''))+'</td>');
     h.push('<td>'+RV_htmlEsc_(String(r.sucursal||''))+'</td>');
     h.push('</tr>');
   }
   h.push('</tbody>');
-  h.push('<tfoot><tr><td colSpan="4" style="text-align:right">Total</td><td style="text-align:right">'+RV_fmtL_Seguro_(resumen.total||0)+'</td><td colSpan="2"></td></tr></tfoot>');
+  h.push('<tfoot><tr><td colSpan="6" style="text-align:right">Total</td><td style="text-align:right">'+RV_fmtL_Seguro_(resumen.total||0)+'</td><td colSpan="2"></td></tr></tfoot>');
   h.push('</table>');
 
   h.push('</body></html>');

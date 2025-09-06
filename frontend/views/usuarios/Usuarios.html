@@ -322,6 +322,10 @@ function Usuarios() {
               placeholder="Selecciona un empleado..."
               optionFilterProp="label"
               options={(empleados||[]).map(e => ({ value: e.nombre_empleado, label: e.nombre_empleado }))}
+              onChange={(val)=>{
+                const emp = (empleados||[]).find(e=>e.nombre_empleado===val);
+                form.setFieldsValue({ nombreSucursal: emp ? emp.nombreSucursal : undefined });
+              }}
             />
           </Form.Item>
           <Form.Item
@@ -338,13 +342,7 @@ function Usuarios() {
           >
             <Input.Password placeholder='Contraseña' />
           </Form.Item>
-          <Form.Item name="nombreSucursal" label="Sucursal" rules={[{ required:true, message:'Selecciona una sucursal' }]}>
-            <Select placeholder="Selecciona sucursal...">
-              {Array.isArray(sucursales) && sucursales.map(s => (
-                <Select.Option key={s} value={s}>{s}</Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
+          <Form.Item name="nombreSucursal" hidden><Input /></Form.Item>
           <Form.Item name="rol" label="Rol" rules={[{ required:true, message:'Selecciona un rol' }]}>
             <Select options={[ { value:'super_admin', label:'Super Admin' }, { value:'admin', label:'Admin' } ]} />
           </Form.Item>

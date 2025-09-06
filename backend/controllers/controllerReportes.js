@@ -72,8 +72,9 @@ function bootstrapReportesVentas(){
     var idxDesc = dM['descripcion'];
     var idxCant = dM['cantidad'];
     var idxPrecio = dM['precio'];
-    var idxTotal = (dM['total']!=null) ? dM['total'] : ((dM['sub_total']!=null)?dM['sub_total']:-1);
-
+    var idxTotalLinea = (dM['total']!=null) ? dM['total'] : -1;
+    var idxSubTotal = (dM['sub_total']!=null) ? dM['sub_total'] : -1;
+    var idxDescLin  = (dM['descuento']!=null) ? dM['descuento'] : -1;
     var idxCategoria = (dM['categoria']!=null)?dM['categoria']:-1;
 
     var idxIdFacturaF = (fM['id_factura']!=null)?fM['id_factura']:-1;
@@ -104,9 +105,11 @@ function bootstrapReportesVentas(){
       var desc = (idxDesc>=0 ? row[idxDesc] : '');
       var cant = Number(idxCant>=0 ? row[idxCant] : 0) || 0;
       var pre  = Number(idxPrecio>=0 ? row[idxPrecio] : 0) || 0;
-      var tot  = (idxTotal>=0 ? Number(row[idxTotal]||0) : (cant*pre));
+      var sub  = (idxSubTotal>=0 ? Number(row[idxSubTotal]||0) : (cant*pre));
+      var des  = (idxDescLin>=0 ? Number(row[idxDescLin]||0) : 0);
+      var tot  = (idxTotalLinea>=0 ? Number(row[idxTotalLinea]||0) : (sub - des));
       var info = facturasMap[String(idf)] || {};
-      out.push({ n:n, fecha:String(info.fecha||''), descripcion:String(desc||''), cantidad:cant, precio:pre, total_linea:tot, metodo_pago:String(info.metodo_pago||''), sucursal:String(info.sucursal||'') });
+      out.push({ n:n, fecha:String(info.fecha||''), descripcion:String(desc||''), cantidad:cant, precio:pre, sub_total:sub, descuento:des, total_linea:tot, metodo_pago:String(info.metodo_pago||''), sucursal:String(info.sucursal||'') });
     }
     return JSON.stringify({ ok:true, data: out });
   }catch(err){

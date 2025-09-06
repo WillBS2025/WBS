@@ -1,0 +1,16 @@
+
+<script type="text/babel" data-presets="env,react">
+  window.safeRender = function(elem, mountId){
+    try{
+      var el = document.getElementById(mountId);
+      if (!el) return;
+      if (window.ErrorBoundary){
+        ReactDOM.render(React.createElement(window.ErrorBoundary, null, elem), el);
+      }else{
+        ReactDOM.render(elem, el);
+      }
+    }catch(e){
+      try{ console.error('Render error on', mountId, e); }catch(_){}
+    }
+  };
+</script>

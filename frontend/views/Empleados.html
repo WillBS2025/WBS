@@ -17,6 +17,11 @@ function Empleados() {
   const [toDelete, setToDelete] = useState(null);
   const [openDelete, setOpenDelete] = useState(false);
 
+  // --- Nuevo: modal de creación de Usuario desde Empleados ---
+  const [openUsuario, setOpenUsuario] = useState(false);
+  const [formUsuario] = Form.useForm();
+
+
   function cargar(){
     setLoading(true);
     google.script.run
@@ -106,7 +111,100 @@ function Empleados() {
     });
   }
 
-  function confirmarEliminar(){
+  
+  function abrirModalUsuarioDesdeEmpleado(){
+    // Validar datos mínimos del empleado antes de abrir (nombre y sucursal)
+    form.validateFields(['nombre_empleado','nombreSucursal']).then(()=>{
+      const nombre = form.getFieldValue('nombre_empleado');
+      const suc = form.getFieldValue('nombreSucursal');
+      // Prefill with defaults
+      formUsuario.setFieldsValue({
+        nombreCompleto: nombre || '',
+        nombre_usuario: (nombre ? nombre.toLowerCase().replace(/\s+/g,'.').normalize('NFD').replace(/[^a-z\.]/g,'') : ''),
+        rol: 'admin',
+        estado: 'Activo'
+      });
+      setOpenUsuario(true);
+    }).catch(()=>{
+      message.warning('Completa al menos el Nombre y la Sucursal del empleado para crear su usuario.');
+    });
+  }
+
+  function crearEmpleadoYUsuario(){
+    // Validar primero los datos del usuario
+    formUsuario.validateFields().then(usuarioVals => {
+      // Luego validar y tomar los datos del empleado
+      form.validateFields().then(empVals => {
+        setLoading(true);
+        try{
+          if (empVals.fecha_nacimiento && empVals.fecha_nacimiento.format){
+            empVals.fecha_nacimiento = empVals.fecha_nacimiento.format('YYYY-MM-DD');
+          }
+          if (empVals.fecha_contratacion && empVals.fecha_contratacion.format){
+            empVals.fecha_contratacion = empVals.fecha_contratacion.format('YYYY-MM-DD');
+          }
+        }catch(_){}
+        const sucursal = empVals.nombreSucursal;
+
+        // 1) Crear empleado
+        google.script.run
+          .withSuccessHandler(resEmp => {
+            try{
+              const r1 = (typeof resEmp==='string')? JSON.parse(resEmp) : resEmp;
+              if (!(r1 && (r1.ok || r1.titulo))) {
+                setLoading(false);
+                Modal.error({ title:'Error', content:(r1 && r1.message) || 'No se pudo crear el empleado' });
+                return;
+              }
+            }catch(_){ /* continuar */ }
+            // 2) Crear usuario con sucursal implícita del empleado
+            const payloadUsuario = {
+              nombreCompleto: empVals.nombre_empleado,
+              nombre_usuario: usuarioVals.nombre_usuario,
+              contrasenia: usuarioVals.contrasenia,
+              rol: usuarioVals.rol,
+              estado: usuarioVals.estado,
+              nombreSucursal: sucursal
+            };
+            google.script.run
+              .withSuccessHandler(resUsr => {
+                setLoading(false);
+                try{
+                  const r2 = (typeof resUsr==='string')? JSON.parse(resUsr) : resUsr;
+                  if (r2 && (r2.ok || r2.titulo)) {
+                    message.success('Empleado y usuario creados.');
+                    setOpenUsuario(false);
+                    setOpen(false);
+                    form.resetFields();
+                    formUsuario.resetFields();
+                    cargar();
+                  } else {
+                    Modal.warning({ title:'Empleado creado, pero el usuario falló', content:(r2 && r2.descripcion) || (r2 && r2.message) || 'No se pudo crear el usuario.' });
+                    setOpenUsuario(false);
+                    setOpen(false);
+                    cargar();
+                  }
+                }catch(_){
+                  setOpenUsuario(false); setOpen(false); cargar();
+                }
+              })
+              .withFailureHandler(err => {
+                setLoading(false);
+                Modal.warning({ title:'Empleado creado, pero el usuario falló', content:String((err&&err.message)||err) });
+                setOpenUsuario(false); setOpen(false); cargar();
+              })
+              .guardarUsuarioSeguro(JSON.stringify(payloadUsuario));
+          })
+          .withFailureHandler(err => {
+            setLoading(false);
+            Modal.error({ title:'Error', content:String((err&&err.message)||err) });
+          })
+          .crearEmpleado(JSON.stringify(empVals));
+      });
+    });
+  }
+
+function confirmarEliminar(){
     if (!toDelete) return;
     setLoading(true);
     google.script.run
@@ -346,6 +444,42 @@ function Empleados() {
           </Form.Item>
           <Form.Item name="estado" label="Estado" initialValue="Activo">
             <Select options={[{value:'Activo',label:'Activo'},{value:'Inactivo',label:'Inactivo'}]} />
+          </Form.Item>
+
+          {mode==='create' && (
+            <div style={{ marginTop: 8 }}>
+              <a onClick={abrirModalUsuarioDesdeEmpleado}>¿Desea crear un Usuario?</a>
+            </div>
+          )}
+        </Form>
+      </Modal>
+
+      {/* Modal para crear Usuario ligado al empleado */}
+      <Modal
+        visible={openUsuario}
+        title="Nuevo Usuario"
+        onCancel={()=>setOpenUsuario(false)}
+        onOk={crearEmpleadoYUsuario}
+        okText="Crear"
+        confirmLoading={loading}
+      >
+        <Form form={formUsuario} layout="vertical">
+          <Form.Item name="nombreCompleto" label="Nombre completo">
+            <Input disabled placeholder="Se completa con el nombre del empleado" />
+          </Form.Item>
+          <Form.Item name="nombre_usuario" label="Usuario" rules={[{ required:true, message:'Escribe un nombre de usuario' }]}>
+            <Input placeholder="usuario (ej. andresp)" />
+          </Form.Item>
+          <Form.Item name="contrasenia" label="Contraseña" rules={[{ required:true, message:'Escribe una contraseña' }]}>
+            <Input.Password placeholder="Contraseña" />
+          </Form.Item>
+          {/* Sucursal implícita (oculta) */}
+          <Form.Item name="nombreSucursal" hidden><Input /></Form.Item>
+          <Form.Item name="rol" label="Rol" rules={[{ required:true, message:'Selecciona un rol' }]} initialValue="admin">
+            <Select options={[ { value:'super_admin', label:'Super Admin' }, { value:'admin', label:'Admin' } ]} />
+          </Form.Item>
+          <Form.Item name="estado" label="Estado" rules={[{ required:true, message:'Selecciona estado' }]} initialValue="Activo">
+            <Select options={[ { value:'Activo', label:'Activo' }, { value:'Inactivo', label:'Inactivo' } ]} />
           </Form.Item>
         </Form>
       </Modal>

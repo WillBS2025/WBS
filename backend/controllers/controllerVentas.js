@@ -411,6 +411,7 @@ function crearVenta(payload){
     var headF = __V_head__(shF);
     var headD = __V_head__(shD);
     var id = Number(obj.id_factura||0) || __V_nextIdFacturas__();
+    var __SUM_SUB__=0, __SUM_DESC__=0, __SUM_TOT__=0;
 
     // === Validación de stock por producto (bloquea si no hay suficiente) ===
     try{
@@ -474,7 +475,8 @@ function crearVenta(payload){
     }
 
     var mapF = __V_headerIndexMap__(headF);
-    var rowF = new Array(headF.length);
+    var idxSucF = (mapF['sucursal']!=null) ? mapF['sucursal'] : (mapF['nombresucursal']!=null) ? mapF['nombresucursal'] : (mapF['nombre_sucursal']!=null) ? mapF['nombre_sucursal'] : -1;
+var rowF = new Array(headF.length);
     function pickF(key, fallback){ return (obj[key] != null ? obj[key] : fallback); }
 
     for (var c=0;c<headF.length;c++){
@@ -490,20 +492,9 @@ function crearVenta(payload){
       else if (k==='usuario' || k==='nombreusuario' || k==='nombre_usuario') val = pickF('usuario','');
       else if (k==='cliente') val = pickF('cliente','');
       else if (k==='empleado') val = pickF('empleado','');
-      else if (k==='subtotal' || k==='sub_total') val = Number(pickF('sub_total', 0) || 0);
-      else if (k==='descuento') val = Number(pickF('descuento', 0) || 0);
-      else if (k==='total') {
-        var totalCalc = Number(pickF('total', 0) || 0);
-        if (!totalCalc){
-          var sum = 0;
-          var items = obj.items || [];
-          for (var i=0;i<items.length;i++){
-            var it = items[i]; sum += Number(it.cantidad||0) * Number(it.precio||0);
-          }
-          totalCalc = sum - Number(obj.descuento||0);
-        }
-        val = totalCalc;
-      }
+      else if (k==='subtotal' || k==='sub_total') val = Number(__SUM_SUB__||0);
+      else if (k==='descuento') val = Number(__SUM_DESC__||0);
+      else if (k==='total') val = Number(__SUM_TOT__||0); 
       else if (k==='metododepago' || k==='metodopago' || k==='metodo_pago') {
         val = pickF('metodo_pago','') || pickF('metodopago','') || pickF('metodo','');
       }
@@ -534,17 +525,80 @@ function crearVenta(payload){
           else if (kd==='cantidad') vd = Number(it.cantidad||0);
           else if (kd==='precio') vd = Number(it.precio||0);
           else if (kd==='sub_total' || kd==='subtotal') vd = Number((it.cantidad||0)*(it.precio||0));
-          else if (kd==='total' || kd==='totallinea' || kd==='total_linea') vd = Number((it.cantidad||0)*(it.precio||0));
+          else if (kd==='descuento') { var __sub = Number((it.cantidad||0)*(it.precio||0)); var __desc = (isFinite(Number(it.descPct))? __sub*Number(it.descPct)/100 : Number(it.descuento||0)||0); vd = __desc; }
+          else if (kd==='total' || kd==='totallinea' || kd==='total_linea') { var __subt = Number((it.cantidad||0)*(it.precio||0)); var __desc2 = (isFinite(Number(it.descPct))? __subt*Number(it.descPct)/100 : Number(it.descuento||0)||0); vd = __subt - __desc2; }
           else vd = '';
           rowD[c2] = vd;
         }
         rowsD.push(rowD);
+      try{
+        var __idxCant = __V_idxOfAny__(headD,['cantidad','cant']);
+        var __idxPre  = __V_idxOfAny__(headD,['precio','precio_unitario']);
+        var __idxSub  = __V_idxOfAny__(headD,['sub_total','subtotal']);
+        var __idxDesc = __V_idxOfAny__(headD,['descuento']);
+        var __idxTot  = __V_idxOfAny__(headD,['total','totallinea','total_linea']);
+        var __c = Number(rowD[__idxCant]||0), __p=Number(rowD[__idxPre]||0);
+        var __s = (__idxSub>=0)? Number(rowD[__idxSub]||0) : (__c*__p);
+        var __d = (__idxDesc>=0)? Number(rowD[__idxDesc]||0) : 0;
+        var __t = (__idxTot>=0)? Number(rowD[__idxTot]||0) : (__s-__d);
+        __SUM_SUB__ += __s; __SUM_DESC__ += __d; __SUM_TOT__ += __t;
+      }catch(e){}
       }
       if (rowsD.length) shD.getRange(shD.getLastRow()+1,1,rowsD.length,headD.length).setValues(rowsD);
+      if (!isFinite(__SUM_TOT__) || __SUM_TOT__ < 0.005){
+  return JSON.stringify({ ok:false, code:'TOTAL_CERO', message:'El Total no puede ser L.0.00' });
+}
+try{
+  var __rowF2__ = shF.getRange(rowIndex,1,1,headF.length).getValues()[0];
+  var __iSub2__ = __V_idxOfAny__(headF, ['sub_total','subtotal']);
+  var __iDesc2__= __V_idxOfAny__(headF, ['descuento']);
+  var __iTot2__ = __V_idxOfAny__(headF, ['total']);
+  if (__iSub2__>=0) __rowF2__[__iSub2__] = Number(__SUM_SUB__||0);
+  if (__iDesc2__>=0) __rowF2__[__iDesc2__] = Number(__SUM_DESC__||0);
+  if (__iTot2__>=0) __rowF2__[__iTot2__] = Number(__SUM_TOT__||0);
+  shF.getRange(rowIndex,1,1,headF.length).setValues([__rowF2__]);
+}catch(__e2__){}
+if (!isFinite(__SUM_TOT__) || __SUM_TOT__ < 0.005){ return JSON.stringify({ ok:false, code:'TOTAL_CERO', message:'El Total no puede ser L.0.00' }); }
+    // Actualizar fila en FACTURAS con sumatorias calculadas
+    try{
+      var __idxIdF__ = __V_idxOfAny__(headF, ['id_factura','id','factura']);
+      var __lastF__ = shF.getLastRow();
+      var __rowIndexF__ = -1;
+      for (var __r__=__lastF__; __r__>=2; __r__--){
+        var __rf__ = shF.getRange(__r__,1,1,headF.length).getValues()[0];
+        if (String(__rf__[__idxIdF__]) === String(id)) { __rowIndexF__ = __r__; break; }
+      }
+      if (__rowIndexF__>0){
+        var __rowF__ = shF.getRange(__rowIndexF__,1,1,headF.length).getValues()[0];
+        var __iSub__ = __V_idxOfAny__(headF, ['sub_total','subtotal']);
+        var __iDesc__ = __V_idxOfAny__(headF, ['descuento']);
+        var __iTot__ = __V_idxOfAny__(headF, ['total']);
+        if (__iSub__>=0) __rowF__[__iSub__] = Number(__SUM_SUB__||0);
+        if (__iDesc__>=0) __rowF__[__iDesc__] = Number(__SUM_DESC__||0);
+        if (__iTot__>=0) __rowF__[__iTot__] = Number(__SUM_TOT__||0);
+        shF.getRange(__rowIndexF__,1,1,headF.length).setValues([__rowF__]);
+      }
+    }catch(__e__){}    
+
     }
 
     try{
-      for (var k=0;k<items.length;k++){
+          // === Recalcular totales escritos en FACTURAS y validar que no sean cero ===
+    if (!isFinite(__SUM_TOT__) || __SUM_TOT__ < 0.005){
+      return JSON.stringify({ ok:false, code:'TOTAL_CERO', message:'El Total no puede ser L.0.00' });
+    }
+    try{
+      var __rowF2__ = shF.getRange(rowIndex,1,1,headF.length).getValues()[0];
+      var __iSub2__ = __V_idxOfAny__(headF, ['sub_total','subtotal']);
+      var __iDesc2__= __V_idxOfAny__(headF, ['descuento']);
+      var __iTot2__ = __V_idxOfAny__(headF, ['total']);
+      if (__iSub2__>=0) __rowF2__[__iSub2__] = Number(__SUM_SUB__||0);
+      if (__iDesc2__>=0) __rowF2__[__iDesc2__] = Number(__SUM_DESC__||0);
+      if (__iTot2__>=0) __rowF2__[__iTot2__] = Number(__SUM_TOT__||0);
+      shF.getRange(rowIndex,1,1,headF.length).setValues([__rowF2__]);
+    }catch(__e2__){}
+
+    for (var k=0; k<items.length; k++){
         var it2 = items[k]||{};
         if (String(it2.tipo||'').toLowerCase()==='producto'){
           __V_updateProductoStock__(String(it2.descripcion||''), String(obj.sucursal||''), -Number(it2.cantidad||0));
@@ -559,11 +613,46 @@ function crearVenta(payload){
 }
 
 
+
+/** Consulta stock "en vivo" desde hoja de productos para la sucursal dada. NO usa caché. */
+function consultarStockProducto(nombre, sucursal){
+  try{
+    var st = __V_getProductoStock__(String(nombre||''), String(sucursal||''));
+    return JSON.stringify({ ok:true, stock: Number(st||0) });
+  }catch(err){
+    return JSON.stringify({ ok:false, message:'Error al consultar stock: '+err });
+  }
+}
 /** ========== NUEVAS FUNCIONES EXPUESTAS PARA LA VISTA VENTAS ========== */
 
 function listarDetalleFactura(id){
   try{
     var mapaTipos = {};
+    // Determinar sucursal de la factura a partir del id
+    var sucursalFactura = '';
+    try{
+      var shF = _getSheetFacturas_();
+      var headF = __V_head__(shF);
+      var mapF = __V_headerIndexMap__(headF);
+      var idxIdF = (mapF['id_factura']!=null)?mapF['id_factura']:
+                   (mapF['id']!=null)?mapF['id']:
+                   (mapF['factura']!=null)?mapF['factura']:-1;
+      var idxSucF = (mapF['sucursal']!=null)?mapF['sucursal']:
+                    (mapF['nombre_sucursal']!=null)?mapF['nombre_sucursal']:
+                    (mapF['nombresucursal']!=null)?mapF['nombresucursal']:-1;
+      if (idxIdF>=0){
+        var lastF = shF.getLastRow();
+        var idStr = String(id||'').trim();
+        for (var rF=2; rF<=lastF; rF++){
+          var rowF = shF.getRange(rF,1,1,headF.length).getValues()[0];
+          if (String(rowF[idxIdF]) === idStr){
+            sucursalFactura = (idxSucF>=0 ? String(rowF[idxSucF]||'').trim() : '');
+            break;
+          }
+        }
+      }
+    }catch(e){}
+
     try{
       var shS = obtenerSheet((env_().SH_SERVICIOS||'servicios'));
       var arrS = (typeof _read==='function' ? _read(shS) : []);
@@ -589,22 +678,27 @@ function listarDetalleFactura(id){
     var sh = obtenerSheet((env_().SH_DETALLE_FACTURA||'detalle_factura'));
     var head = __V_head__(sh);
     var idxId = __V_idxOfAny__(head, ['id_factura','id','factura']);
-    var idxDesc = __V_idxOfAny__(head, ['descripcion','producto_servicio','producto','servicio','concepto']);
+    var idxDescCol = __V_idxOfAny__(head, ['descripcion','producto_servicio','producto','servicio','concepto']);
     var idxCant = __V_idxOfAny__(head, ['cantidad','cant']);
     var idxPre  = __V_idxOfAny__(head, ['precio','precio_unitario']);
     var idxTot  = __V_idxOfAny__(head, ['total','total_linea','totallinea']);
-    var out = [];
+    
+    // Nuevo: leer 'categoria' directamente si existe para no inferir por nombre
+    var idxCat  = __V_idxOfAny__(head, ['categoria','tipo','tipo_item','tipo_linea']);
+var out = [];
     var last = sh.getLastRow();
     id = String(id||'').trim();
     if (!id) return JSON.stringify({ ok:true, data: [] });
     for (var r=2; r<=last; r++){
       var row = sh.getRange(r,1,1,head.length).getValues()[0];
       if (String(row[idxId]) === id){
-        var desc = (idxDesc>=0 ? row[idxDesc] : '');
+        var desc = (idxDescCol>=0 ? row[idxDescCol] : '');
         var cant = Number(idxCant>=0 ? row[idxCant] : 0);
         var pre  = Number(idxPre>=0  ? row[idxPre]  : 0);
         var tot  = (idxTot>=0 ? Number(row[idxTot]||0) : (cant*pre));
-        out.push({ tipo: mapaTipos[desc]||'', descripcion: desc, cantidad: cant, precio: pre, total: tot });
+        var sub = (cant*pre);
+        var descAmt = 0; var idxDescAmt = __V_idxOfAny__(head, ['descuento']); try{ descAmt = (idxDescAmt>=0 ? Number(row[idxDescAmt]||0) : 0); }catch(e){}var pct = (sub>0 ? (descAmt*100/sub) : 0);
+        out.push({  tipo: (idxCat>=0 ? String(row[idxCat]||'').toLowerCase().trim() : (mapaTipos[desc]||'')), descripcion: desc, cantidad: cant, precio: pre, sub_total: sub, total: tot, descPct: pct, descuento: descAmt , stock: (String((idxCat>=0 ? String(row[idxCat]||'') : (mapaTipos[desc]||''))).toLowerCase()==='producto' ? __V_getProductoStock__(desc, sucursalFactura) : 0) });
       }
     }
     return JSON.stringify({ ok:true, data: out });
@@ -714,7 +808,7 @@ function buscarItemsVenta(query, sucursal, tipo){
           if (sucursal && sucP && sucP !== sucursal) continue;
           if (query && nomP.toLowerCase().indexOf(query) === -1) continue;
           var precio = Number(p.precio || p.precio_venta || p.precioVenta || p.precio_compra || p.costo || 0);
-          items.push({ tipo:'producto', descripcion: nomP, precio: precio });
+          items.push({ tipo:'producto', descripcion: nomP, precio: precio, stock: Number(p.stock||0) });
         }
       }
     }catch(e){}
@@ -730,17 +824,21 @@ function buscarItemsVenta(query, sucursal, tipo){
   }
 }
 
+
 function __V_puedeEditarFactura__(fecha, rol){
   try{
-    rol = String(rol||'').toLowerCase();
-    if (rol === 'super_admin') return true;
-    var t = (fecha && Object.prototype.toString.call(fecha)==='[object Date]' && !isNaN(fecha)) ? fecha.getTime() : Date.parse(fecha);
-    var ms = isNaN(t) ? NaN : t;
+    var r = String(rol||'').toLowerCase().trim();
+    if (r === 'super_admin') return true;
+    // Admin: ventana de 5 minutos desde la fecha de la factura
+    var ms = (fecha && Object.prototype.toString.call(fecha)==='[object Date]' && !isNaN(fecha)) ? fecha.getTime() : Date.parse(fecha);
     if (!isFinite(ms)) return false;
-    var now = Date.now();
-    return (now - ms) < (5*60*1000);
-  }catch(_){ return false; }
+    var diff = Date.now() - ms;
+    return diff <= (5*60*1000); // 5 minutos
+  }catch(err){
+    return false;
+  }
 }
+
 
 function eliminarVenta(id_factura, rol){
   try{
@@ -815,6 +913,7 @@ function eliminarVenta(id_factura, rol){
 
 function actualizarVenta(payload, rol){
   try{
+    var __SUM_SUB__=0, __SUM_DESC__=0, __SUM_TOT__=0;
     var obj = (typeof payload==='string') ? JSON.parse(payload) : (payload||{});
     var id = String(obj.id_factura||obj.id||'').trim();
     if (!id) return JSON.stringify({ ok:false, message:'id_factura requerido' });
@@ -849,18 +948,64 @@ function actualizarVenta(payload, rol){
       var k = __V_normalizeHeader__(headF[c]);
       if (k==='empleado') rowF[c] = obj.empleado || rowF[c];
       else if (k==='metodo_pago' || k==='metododepago' || k==='metodopago') rowF[c] = obj.metodo_pago || rowF[c];
-      else if (k==='descuento') rowF[c] = Number(obj.descuento||0);
-      else if (k==='sub_total' || k==='subtotal') rowF[c] = Number(obj.sub_total||0);
-      else if (k==='total') rowF[c] = Number(obj.total||0);
+      else if (k==='descuento') rowF[c] = Number(__SUM_DESC__||0);
+      else if (k==='sub_total' || k==='subtotal') rowF[c] = Number(__SUM_SUB__||0);
+      else if (k==='total') rowF[c] = Number(__SUM_TOT__||0);
     }
-    shF.getRange(rowIndex,1,1,headF.length).setValues([rowF]);
-
-    var mapD = __V_headerIndexMap__(headD);
+shF.getRange(rowIndex,1,1,headF.length).setValues([rowF]);
+var mapD = __V_headerIndexMap__(headD);
     var idxIdFacturaD = (mapD['id_factura']!=null) ? mapD['id_factura'] :
                         (mapD['id']!=null) ? mapD['id'] :
                         (mapD['factura']!=null) ? mapD['factura'] : -1;
 
-    var lastD = shD.getLastRow();
+    
+    // Validación de stock considerando cantidades previas de esta factura
+    try{
+      var oldQty = {};
+      var lastScan = shD.getLastRow();
+      for (var rScan=2; rScan<=lastScan; rScan++){
+        var rw = shD.getRange(rScan,1,1,headD.length).getValues()[0];
+        if (String(rw[idxIdFacturaD]) === id){
+          var kdmap = __V_headerIndexMap__(headD);
+          var iDesc = (kdmap['descripcion']!=null)?kdmap['descripcion']
+                    : (kdmap['producto_servicio']!=null)?kdmap['producto_servicio']:-1;
+          var iCat  = (kdmap['categoria']!=null)?kdmap['categoria']
+                    : (kdmap['tipo']!=null)?kdmap['tipo']:-1;
+          var iCant = (kdmap['cantidad']!=null)?kdmap['cantidad']:-1;
+          var cat = String(iCat>=0 ? rw[iCat] : '').toLowerCase();
+          if (cat==='producto'){
+            var dsc = String(iDesc>=0 ? rw[iDesc] : '').trim();
+            var ctt = Number(iCant>=0 ? rw[iCant] : 0);
+            oldQty[dsc] = (oldQty[dsc]||0) + (isFinite(ctt)?ctt:0);
+          }
+        }
+      }
+      var req = {};
+      var itemsChk = (obj.items || []);
+      for (var ii=0; ii<itemsChk.length; ii++){
+        var itv = itemsChk[ii] || {};
+        if (String(itv.tipo||'').toLowerCase() === 'producto'){
+          var desc = String(itv.descripcion||'').trim();
+          if (desc){
+            req[desc] = (req[desc]||0) + Number(itv.cantidad||0);
+          }
+        }
+      }
+      var insuf = [];
+      for (var nombreP in req){
+        if (!req.hasOwnProperty(nombreP)) continue;
+        var disp = __V_getProductoStock__(nombreP, rowF[idxSucF] || obj.sucursal || '');
+        var disponibleTotal = Number(disp||0) + Number(oldQty[nombreP]||0);
+        var solicitado = Number(req[nombreP]||0);
+        if (disponibleTotal < solicitado){
+          insuf.push({ descripcion: nombreP, solicitado: solicitado, disponible: disponibleTotal });
+        }
+      }
+      if (insuf.length){
+        return JSON.stringify({ ok:false, code:'STOCK_INSUF', message:'Stock insuficiente', details: insuf });
+      }
+    }catch(_){}
+var lastD = shD.getLastRow();
     for (var rr=lastD; rr>=2; rr--){
       var rowD = shD.getRange(rr,1,1,headD.length).getValues()[0];
       if (String(rowD[idxIdFacturaD]) === id){
@@ -878,6 +1023,7 @@ function actualizarVenta(payload, rol){
     if (items && items.length){
       var nextDetId = __V_nextIdGeneric__(shD, ['id_detalle','iddetalle']);
       var rowsD = [];
+      __SUM_SUB__=0; __SUM_DESC__=0; __SUM_TOT__=0;
       for (var i=0;i<items.length;i++){
         var it = items[i];
         var rowN = new Array(headD.length);
@@ -886,20 +1032,54 @@ function actualizarVenta(payload, rol){
           var vd = '';
           if (kd==='id_detalle' || kd==='iddetalle') vd = nextDetId++;
           else if (kd==='id_factura' || kd==='idfactura' || kd==='idventa') vd = id;
-          else if (kd==='descripcion' || kd==='producto_servicio') vd = it.descripcion || '';
+          else if (kd==='descripcion' || kd==='producto_servicio' || kd==='concepto' || kd==='producto' || kd==='servicio') vd = it.descripcion || '';
+          else if (kd==='categoria' || kd==='tipo' || kd==='categoria_item') {
+            var _t = String(it.tipo||it.categoria||'').toLowerCase();
+            if (_t==='servicio' || _t==='servicios') vd = 'servicio';
+            else if (_t==='producto' || _t==='productos') vd = 'producto';
+            else vd = _t || '';
+          }
           else if (kd==='cantidad') vd = Number(it.cantidad||0);
-          else if (kd==='precio') vd = Number(it.precio||0);
+          else if (kd==='precio' || kd==='precio_unitario') vd = Number(it.precio||0);
           else if (kd==='sub_total' || kd==='subtotal') vd = Number((it.cantidad||0)*(it.precio||0));
-          else if (kd==='total' || kd==='totallinea' || kd==='total_linea') vd = Number((it.cantidad||0)*(it.precio||0));
+          else if (kd==='descuento') { var __sub = Number((it.cantidad||0)*(it.precio||0)); var __desc = (isFinite(Number(it.descPct))? __sub*Number(it.descPct)/100 : Number(it.descuento||0)||0); vd = __desc; }
+          else if (kd==='total' || kd==='totallinea' || kd==='total_linea') { var __subt = Number((it.cantidad||0)*(it.precio||0)); var __desc2 = (isFinite(Number(it.descPct))? __subt*Number(it.descPct)/100 : Number(it.descuento||0)||0); vd = __subt - __desc2; }
           else vd = '';
           rowN[c2] = vd;
         }
         rowsD.push(rowN);
+        try{
+          var __idxCant = __V_idxOfAny__(headD,['cantidad','cant']);
+          var __idxPre  = __V_idxOfAny__(headD,['precio','precio_unitario']);
+          var __idxSub  = __V_idxOfAny__(headD,['sub_total','subtotal']);
+          var __idxDesc = __V_idxOfAny__(headD,['descuento']);
+          var __idxTot  = __V_idxOfAny__(headD,['total','totallinea','total_linea']);
+          var __c = Number(rowN[__idxCant]||0), __p=Number(rowN[__idxPre]||0);
+          var __s = (__idxSub>=0)? Number(rowN[__idxSub]||0) : (__c*__p);
+          var __d = (__idxDesc>=0)? Number(rowN[__idxDesc]||0) : 0;
+          var __t = (__idxTot>=0)? Number(rowN[__idxTot]||0) : (__s-__d);
+          __SUM_SUB__ += __s; __SUM_DESC__ += __d; __SUM_TOT__ += __t;
+        }catch(e){}
       }
       if (rowsD.length) shD.getRange(shD.getLastRow()+1,1,rowsD.length,headD.length).setValues(rowsD);
     }
     try{
-      for (var k=0;k<items.length;k++){
+          // === Recalcular totales escritos en FACTURAS y validar que no sean cero ===
+    if (!isFinite(__SUM_TOT__) || __SUM_TOT__ < 0.005){
+      return JSON.stringify({ ok:false, code:'TOTAL_CERO', message:'El Total no puede ser L.0.00' });
+    }
+    try{
+      var __rowF2__ = shF.getRange(rowIndex,1,1,headF.length).getValues()[0];
+      var __iSub2__ = __V_idxOfAny__(headF, ['sub_total','subtotal']);
+      var __iDesc2__= __V_idxOfAny__(headF, ['descuento']);
+      var __iTot2__ = __V_idxOfAny__(headF, ['total']);
+      if (__iSub2__>=0) __rowF2__[__iSub2__] = Number(__SUM_SUB__||0);
+      if (__iDesc2__>=0) __rowF2__[__iDesc2__] = Number(__SUM_DESC__||0);
+      if (__iTot2__>=0) __rowF2__[__iTot2__] = Number(__SUM_TOT__||0);
+      shF.getRange(rowIndex,1,1,headF.length).setValues([__rowF2__]);
+    }catch(__e2__){}
+
+    for (var k=0; k<items.length; k++){
         var it2 = items[k]||{};
         if (String(it2.tipo||'').toLowerCase()==='producto'){
           __V_updateProductoStock__(String(it2.descripcion||''), String(rowF[(mapF['sucursal']!=null?mapF['sucursal']:(mapF['nombresucursal']!=null?mapF['nombresucursal']:-1))]||''), -Number(it2.cantidad||0));
