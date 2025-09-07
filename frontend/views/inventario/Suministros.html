@@ -390,7 +390,7 @@ function Suministros() {
     var fInicio = parseYMD(value);
     var t = new Date(); var today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
     if (!fInicio) return Promise.reject(new Error('Fecha inválida'));
-    if (fInicio > today) return Promise.reject(new Error('La fecha no puede ser futura'));
+    // *** PERMITIR FUTURO: se quitó la verificación fInicio > today ***
     if (fCompra && fInicio < fCompra) return Promise.reject(new Error('El inicio no puede ser anterior a la compra'));
     return Promise.resolve();
   }
@@ -401,7 +401,7 @@ function Suministros() {
     var fFin = parseYMD(value);
     var t = new Date(); var today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
     if (!fFin) return Promise.reject(new Error('Fecha inválida'));
-    if (fFin > today) return Promise.reject(new Error('La fecha no puede ser futura'));
+    // *** PERMITIR FUTURO: se quitó la verificación fFin > today ***
     if (fCompra && fFin < fCompra) return Promise.reject(new Error('El fin no puede ser anterior a la compra'));
     if (fInicio && fFin < fInicio) return Promise.reject(new Error('El fin no puede ser anterior al inicio'));
     return Promise.resolve();
