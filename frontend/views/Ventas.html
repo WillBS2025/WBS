@@ -674,8 +674,21 @@ function Ventas(){
   }
   function KPI({ title, value, suffix }){ const v=useCountUp(value); return (<Card bodyStyle={{padding:14}} className="ventas-kpi"><div className="ventas-kpi-sub">{title}</div><div className="ventas-kpi-val">{Math.round(Number(v))}{suffix||''}</div></Card>); }
 
+  // === NUEVO: limitar datos de dashboards por rol/sucursal ===
+  const facturasDash = useMemo(() => {
+    let base = Array.isArray(facturas) ? facturas : [];
+    if (!isSuper) {
+      // Admin: solo su sucursal
+      return base.filter(r => String(r.sucursal||'') === String(ctx.sucursal||''));
+    }
+    // Super admin: puede usar filtros si están activos
+    if (filters.sucursal) base = base.filter(r => String(r.sucursal||'') === String(filters.sucursal));
+    if (filters.empleado) base = base.filter(r => String(r.empleado||'') === String(filters.empleado));
+    return base;
+  }, [facturas, isSuper, ctx.sucursal, filters]);
+
   const hoy = startOfDay(new Date());
-  const facturasParsed = (facturas||[]).map(r=>({...r, _fecha: parseFechaFlexible(r.fecha || r.Fecha || r._createdAt)}));
+  const facturasParsed = (facturasDash||[]).map(r=>({...r, _fecha: parseFechaFlexible(r.fecha || r.Fecha || r._createdAt)}));
   const facturasHoy    = facturasParsed.filter(r=> r._fecha && sameDay(r._fecha, hoy));
   const ventasHoy      = facturasHoy.length;
   const ingresosHoy    = facturasHoy.reduce((a,r)=> a + getTotalFactura(r), 0);
@@ -876,4 +889,3 @@ function Ventas(){
 }
 ReactDOM.render(<Ventas />, document.getElementById('VentasView'));
 </script>
-
