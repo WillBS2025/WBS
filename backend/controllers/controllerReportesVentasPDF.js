@@ -60,12 +60,17 @@ function RV_filtrar_(rows, filtros){
 
 function RV_resumen_(rows){
   var total = 0, cantidad = 0;
+  var porMetodoPago = {};
   for (var i=0;i<(rows||[]).length;i++){
     var r = rows[i] || {};
+    var m = String(r.metodo_pago||'').trim();
+
     total += Number(r.total_linea||0) || 0;
     cantidad += Number(r.cantidad||0) || 0;
+    porMetodoPago[m] = (porMetodoPago[m]||0) + (Number(r.total_linea||0)||0);
   }
-  return { total: total, registros: (rows||[]).length, cantidad: cantidad };
+  function _toArr(obj){ var a=[]; for (var k in obj) if (Object.prototype.hasOwnProperty.call(obj,k)){ a.push({ metodoPago: k||'(sin dato)', total: obj[k] }); } a.sort(function(a,b){ return (b.total||0)-(a.total||0); }); return a; }
+  return { total: total, registros: (rows||[]).length, cantidad: cantidad, porMetodoPago: _toArr(porMetodoPago) };
 }
 
 function RV_renderReporteVentasHTML_Lite(payload){
@@ -91,7 +96,7 @@ function RV_renderReporteVentasHTML_Lite(payload){
   h.push('table{width:100%;border-collapse:collapse;margin-top:12px;font-size:12px}');
   h.push('th,td{border:1px solid #ddd;padding:6px 8px;vertical-align:top}');
   h.push('th{background:#f5f5f5;text-align:left}');
-  h.push('tfoot td{font-weight:600}');
+  h.push('tfoot td{font-weight:600}.section{margin-top:18px}');
   h.push('</style></head><body>');
 
   h.push('<h1>'+titulo+'</h1>');
@@ -125,6 +130,22 @@ h.push('<td>'+RV_htmlEsc_(String(r.metodo_pago||''))+'</td>');
   h.push('</tbody>');
   h.push('<tfoot><tr><td colSpan="6" style="text-align:right">Total</td><td style="text-align:right">'+RV_fmtL_Seguro_(resumen.total||0)+'</td><td colSpan="2"></td></tr></tfoot>');
   h.push('</table>');
+  h.push('<div class="section">');
+  h.push('<h2>Por método de pago</h2>');
+  (function(arr){
+    arr = Array.isArray(arr) ? arr : [];
+    if (!arr.length){ h.push('<p style="color:#666">(sin datos)</p>'); }
+    else {
+      h.push('<table><thead><tr><th>metodoPago</th><th style="text-align:right">Total</th></tr></thead><tbody>');
+      for (var i=0;i<arr.length;i++){
+        var it = arr[i] || {};
+        h.push('<tr><td>'+RV_htmlEsc_(String(it.metodoPago||''))+'</td><td style="text-align:right">'+RV_fmtMoney_(it.total||0)+'</td></tr>');
+      }
+      h.push('</tbody></table>');
+    }
+  })(resumen.porMetodoPago);
+  h.push('</div>');
+
 
   h.push('</body></html>');
   return h.join('');

@@ -4,7 +4,7 @@
 
 <div id="ReportesView"></div>
 
-<!-- Helper de cliente: se ejecuta SOLO en el navegador -->
+
 <script>
 (function (global) {
   if (!global) return; // evita "window is not defined" si esto se ejecutara en V8 (Apps Script)
@@ -67,6 +67,8 @@
         const tipo = emailModal.tipo || 'ventas';
         const filtros = (tipo==='gastos') ? buildFiltrosG() : buildFiltrosV();
         const meta = { tituloBarberia, usuario: usuarioActual };
+        // >>> agregado: resumen por método de pago (VENTAS)
+        if (tipo==='ventas'){ meta.resumenMetodoPago = buildResumenMetodoPagoFromVentas(ventas); }
 
         // Genera el mismo PDF que "Descargar PDF"
         const res = await EmailShare.getPdfBase64(tipo, filtros, meta);
@@ -286,6 +288,39 @@
       return out;
     }
 
+    
+    function buildResumenMetodoPagoFromVentas(list){
+      try{
+        const arr = Array.isArray(list) ? list : [];
+        // Si el backend ya devuelve solo servicios, esto no afecta.
+        // Si existe la columna 'categoria', filtramos a 'servicio'; en caso contrario usamos todo.
+        const onlyServicios = arr.filter(function(v){
+          const cat = String((v && v.categoria) || 'servicio').toLowerCase();
+          return cat === 'servicio';
+        });
+        const src = onlyServicios.length ? onlyServicios : arr;
+
+        var acc = {};
+        for (var i=0; i<src.length; i++){
+          var v = src[i] || {};
+          var metodo = String(v.metodo_pago || v.metodoPago || '').trim() || 'N/D';
+          var total = Number(v.total_linea || v.totalLinea || v.total || 0) || 0;
+          acc[metodo] = (acc[metodo] || 0) + total;
+        }
+        var rows = [];
+        for (var k in acc){
+          if (Object.prototype.hasOwnProperty.call(acc, k)){
+            rows.push({ metodoPago: k, total: acc[k] });
+          }
+        }
+        rows.sort(function(a,b){ return a.metodoPago.localeCompare(b.metodoPago); });
+        var totalGeneral = 0;
+        for (var j=0; j<rows.length; j++){ totalGeneral += Number(rows[j].total||0); }
+        return { rows: rows, total: totalGeneral };
+      }catch(e){ return { rows:[], total:0 }; }
+    }
+    
+
     function fetchSucursales(){
       function setSucursalNames(names){
         try{
@@ -424,7 +459,8 @@
       try{
         if (google && google.script && google.script.run){
           const filtros = buildFiltrosV();
-          const meta = { tituloBarberia, usuario: usuarioActual };
+          // >>> agregado: resumen por método de pago
+          const meta = { tituloBarberia, usuario: usuarioActual, resumenMetodoPago: buildResumenMetodoPagoFromVentas(ventas) };
           google.script.run
             .withSuccessHandler(function(res){
               try{
@@ -969,5 +1005,6 @@
     }
   })();
 </script>
+
 
 
