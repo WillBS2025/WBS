@@ -1,4 +1,3 @@
-
 /**
  * controllerReportesVentasPDF.js
  * Genera PDF (base64) para Reporte de Ventas (LITE) y envía por Gmail API (Advanced Service).
@@ -118,34 +117,38 @@ function RV_renderReporteVentasHTML_Lite(payload){
     h.push('<td>'+RV_htmlEsc_(String(r.descripcion||''))+'</td>');
     h.push('<td style="text-align:right">'+(Number(r.cantidad||0)||0)+'</td>');
     h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(Number(r.precio||0)||0)+'</td>');
-  var _sub = (typeof r.sub_total!=='undefined') ? Number(r.sub_total||0) : (Number(r.cantidad||0)*Number(r.precio||0));
-  var _des = (typeof r.descuento!=='undefined') ? Number(r.descuento||0) : Math.max(0, _sub - Number(r.total_linea||0));
-  h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(_sub)+'</td>');
-  h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(_des)+'</td>');
-  h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(Number(r.total_linea||0)||0)+'</td>');
-h.push('<td>'+RV_htmlEsc_(String(r.metodo_pago||''))+'</td>');
+    var _sub = (typeof r.sub_total!=='undefined') ? Number(r.sub_total||0) : (Number(r.cantidad||0)*Number(r.precio||0));
+    var _des = (typeof r.descuento!=='undefined') ? Number(r.descuento||0) : Math.max(0, _sub - Number(r.total_linea||0));
+    h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(_sub)+'</td>');
+    h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(_des)+'</td>');
+    h.push('<td style="text-align:right">'+RV_fmtL_Seguro_(Number(r.total_linea||0)||0)+'</td>');
+    h.push('<td>'+RV_htmlEsc_(String(r.metodo_pago||''))+'</td>');
     h.push('<td>'+RV_htmlEsc_(String(r.sucursal||''))+'</td>');
     h.push('</tr>');
   }
   h.push('</tbody>');
   h.push('<tfoot><tr><td colSpan="6" style="text-align:right">Total</td><td style="text-align:right">'+RV_fmtL_Seguro_(resumen.total||0)+'</td><td colSpan="2"></td></tr></tfoot>');
   h.push('</table>');
+
   h.push('<div class="section">');
   h.push('<h2>Por método de pago</h2>');
   (function(arr){
     arr = Array.isArray(arr) ? arr : [];
-    if (!arr.length){ h.push('<p style="color:#666">(sin datos)</p>'); }
-    else {
+    if (!arr.length){
+      h.push('<p style="color:#666">(sin datos)</p>');
+    } else {
       h.push('<table><thead><tr><th>metodoPago</th><th style="text-align:right">Total</th></tr></thead><tbody>');
       for (var i=0;i<arr.length;i++){
         var it = arr[i] || {};
         h.push('<tr><td>'+RV_htmlEsc_(String(it.metodoPago||''))+'</td><td style="text-align:right">'+RV_fmtMoney_(it.total||0)+'</td></tr>');
       }
-      h.push('</tbody></table>');
+      // ==== Fila de Total para el resumen por método de pago ====
+      var _sum = 0; for (var j=0;j<arr.length;j++){ var _t=(arr[j]&&arr[j].total)||0; _sum += Number(_t)||0; }
+      var _totalMP = Number((resumen && resumen.total) || _sum) || _sum;
+      h.push('</tbody><tfoot><tr><td style="text-align:right">Total</td><td style="text-align:right">'+RV_fmtMoney_(_totalMP)+'</td></tr></tfoot></table>');
     }
   })(resumen.porMetodoPago);
   h.push('</div>');
-
 
   h.push('</body></html>');
   return h.join('');
@@ -229,3 +232,4 @@ function sendReportEmailGmail(payload){
     return JSON.stringify({ ok:false, message: 'Error en sendReportEmailGmail: '+err });
   }
 }
+
