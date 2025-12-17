@@ -1,9 +1,8 @@
 /**
  * controllerVentas.js
  * Funciones de Sucursales y Descuentos usadas por la vista Ventas.
- * Nota: se asume que existen helpers globales como `obtenerSheet` y `env_`.
- */
 
+ */
 /** ==== Helpers locales seguros ==== */
 function __V_normKey__(s){
   return String(s||'').toLowerCase().replace(/\s+/g,'').replace(/\./g,'');
@@ -32,6 +31,34 @@ function __V_nextIdGeneric__(sh, idCandidates){
   }
   return (max||0)+1;
 }
+
+function __V_deleteRowBlocks__(sh, rows){
+  try{
+    if (!rows || !rows.length) return;
+    rows = rows.slice().sort(function(a,b){ return a-b; });
+
+    var blocks = [];
+    var start = rows[0], prev = rows[0], count = 1;
+
+    for (var i=1; i<rows.length; i++){
+      var cur = rows[i];
+      if (cur === (prev + 1)){
+        count++; prev = cur;
+      }else{
+        blocks.push({ start: start, count: count });
+        start = cur; prev = cur; count = 1;
+      }
+    }
+    blocks.push({ start: start, count: count });
+
+    // borrar de abajo hacia arriba para no desfasar índices
+    for (var b=blocks.length-1; b>=0; b--){
+      sh.deleteRows(blocks[b].start, blocks[b].count);
+    }
+  }catch(e){}
+}
+
+
 
 /** ==== Sucursales ==== */
 /** Listado simple de sucursales (nombreSucursal) */
@@ -625,33 +652,39 @@ function consultarStockProducto(nombre, sucursal){
 }
 /** ========== NUEVAS FUNCIONES EXPUESTAS PARA LA VISTA VENTAS ========== */
 
-function listarDetalleFactura(id){
+function listarDetalleFactura(id, sucursal){
   try{
     var mapaTipos = {};
-    // Determinar sucursal de la factura a partir del id
-    var sucursalFactura = '';
-    try{
-      var shF = _getSheetFacturas_();
-      var headF = __V_head__(shF);
-      var mapF = __V_headerIndexMap__(headF);
-      var idxIdF = (mapF['id_factura']!=null)?mapF['id_factura']:
-                   (mapF['id']!=null)?mapF['id']:
-                   (mapF['factura']!=null)?mapF['factura']:-1;
-      var idxSucF = (mapF['sucursal']!=null)?mapF['sucursal']:
-                    (mapF['nombre_sucursal']!=null)?mapF['nombre_sucursal']:
-                    (mapF['nombresucursal']!=null)?mapF['nombresucursal']:-1;
-      if (idxIdF>=0){
-        var lastF = shF.getLastRow();
-        var idStr = String(id||'').trim();
-        for (var rF=2; rF<=lastF; rF++){
-          var rowF = shF.getRange(rF,1,1,headF.length).getValues()[0];
-          if (String(rowF[idxIdF]) === idStr){
-            sucursalFactura = (idxSucF>=0 ? String(rowF[idxSucF]||'').trim() : '');
-            break;
+    // Determinar sucursal de la factura a partir del id (si no viene desde el front)
+    var sucursalFactura = String(sucursal||'').trim();
+
+    if (!sucursalFactura){
+      try{
+        var shF = _getSheetFacturas_();
+        var headF = __V_head__(shF);
+        var mapF = __V_headerIndexMap__(headF);
+        var idxIdF = (mapF['id_factura']!=null)?mapF['id_factura']:
+                     (mapF['id']!=null)?mapF['id']:
+                     (mapF['factura']!=null)?mapF['factura']:-1;
+        var idxSucF = (mapF['sucursal']!=null)?mapF['sucursal']:
+                      (mapF['nombre_sucursal']!=null)?mapF['nombre_sucursal']:
+                      (mapF['nombresucursal']!=null)?mapF['nombresucursal']:-1;
+        if (idxIdF>=0){
+          var lastF = shF.getLastRow();
+          var idStr = String(id||'').trim();
+          if (lastF >= 2){
+            var dataF = shF.getRange(2,1,lastF-1,headF.length).getValues();
+            for (var iF=0; iF<dataF.length; iF++){
+              var rowF = dataF[iF];
+              if (String(rowF[idxIdF]) === idStr){
+                sucursalFactura = (idxSucF>=0 ? String(rowF[idxSucF]||'').trim() : '');
+                break;
+              }
+            }
           }
         }
-      }
-    }catch(e){}
+      }catch(e){}
+    }
 
     try{
       var shS = obtenerSheet((env_().SH_SERVICIOS||'servicios'));
@@ -682,23 +715,43 @@ function listarDetalleFactura(id){
     var idxCant = __V_idxOfAny__(head, ['cantidad','cant']);
     var idxPre  = __V_idxOfAny__(head, ['precio','precio_unitario']);
     var idxTot  = __V_idxOfAny__(head, ['total','total_linea','totallinea']);
-    
     // Nuevo: leer 'categoria' directamente si existe para no inferir por nombre
     var idxCat  = __V_idxOfAny__(head, ['categoria','tipo','tipo_item','tipo_linea']);
-var out = [];
+    var idxDescAmt = __V_idxOfAny__(head, ['descuento']);
+
+    var out = [];
     var last = sh.getLastRow();
     id = String(id||'').trim();
-    if (!id) return JSON.stringify({ ok:true, data: [] });
-    for (var r=2; r<=last; r++){
-      var row = sh.getRange(r,1,1,head.length).getValues()[0];
+    if (!id || last < 2) return JSON.stringify({ ok:true, data: [] });
+
+    // OPT: una sola lectura grande y filtrar en memoria
+    var data = sh.getRange(2,1,last-1,head.length).getValues();
+
+    for (var i=0; i<data.length; i++){
+      var row = data[i];
       if (String(row[idxId]) === id){
         var desc = (idxDescCol>=0 ? row[idxDescCol] : '');
         var cant = Number(idxCant>=0 ? row[idxCant] : 0);
         var pre  = Number(idxPre>=0  ? row[idxPre]  : 0);
         var tot  = (idxTot>=0 ? Number(row[idxTot]||0) : (cant*pre));
         var sub = (cant*pre);
-        var descAmt = 0; var idxDescAmt = __V_idxOfAny__(head, ['descuento']); try{ descAmt = (idxDescAmt>=0 ? Number(row[idxDescAmt]||0) : 0); }catch(e){}var pct = (sub>0 ? (descAmt*100/sub) : 0);
-        out.push({  tipo: (idxCat>=0 ? String(row[idxCat]||'').toLowerCase().trim() : (mapaTipos[desc]||'')), descripcion: desc, cantidad: cant, precio: pre, sub_total: sub, total: tot, descPct: pct, descuento: descAmt , stock: (String((idxCat>=0 ? String(row[idxCat]||'') : (mapaTipos[desc]||''))).toLowerCase()==='producto' ? __V_getProductoStock__(desc, sucursalFactura) : 0) });
+
+        var descAmt = 0;
+        try{ descAmt = (idxDescAmt>=0 ? Number(row[idxDescAmt]||0) : 0); }catch(e){}
+        var pct = (sub>0 ? (descAmt*100/sub) : 0);
+
+        var tipoRow = (idxCat>=0 ? String(row[idxCat]||'').toLowerCase().trim() : (mapaTipos[desc]||''));
+        out.push({
+          tipo: tipoRow,
+          descripcion: desc,
+          cantidad: cant,
+          precio: pre,
+          sub_total: sub,
+          total: tot,
+          descPct: pct,
+          descuento: descAmt,
+          stock: (String(tipoRow).toLowerCase()==='producto' ? __V_getProductoStock__(desc, sucursalFactura) : 0)
+        });
       }
     }
     return JSON.stringify({ ok:true, data: out });
@@ -706,6 +759,7 @@ var out = [];
     return JSON.stringify({ ok:false, message: 'Error al listar detalle: '+err });
   }
 }
+
 
 
 /** Prefetch de servicios y productos por sucursal con cache (5 min). */
@@ -844,9 +898,11 @@ function eliminarVenta(id_factura, rol){
   try{
     id_factura = String(id_factura||'').trim();
     if (!id_factura) return JSON.stringify({ ok:false, message:'ID requerido' });
+
     var shF = _getSheetFacturas_();
     var data = shF.getDataRange().getValues();
     if (!data || data.length<2) return JSON.stringify({ ok:false, message:'No hay datos' });
+
     var head = data[0];
     var m = __V_headerIndexMap__(head);
     var idxId = (m['id_factura']!=null) ? m['id_factura'] :
@@ -855,6 +911,7 @@ function eliminarVenta(id_factura, rol){
     var idxFecha = (m['fecha']!=null) ? m['fecha'] :
                    (m['fecharegistro']!=null) ? m['fecharegistro'] :
                    (m['createdat']!=null) ? m['createdat'] : -1;
+
     var rowIndex = -1;
     var fechaVal = '';
     for (var r=1; r<data.length; r++){
@@ -868,48 +925,70 @@ function eliminarVenta(id_factura, rol){
     if (!__V_puedeEditarFactura__(fechaVal, rol)){
       return JSON.stringify({ ok:false, message:'Fuera de ventana de edición (5 min) para rol '+rol });
     }
+
+    // Primero: procesar detalle_factura (restaurar stock si aplica) y borrar líneas de la venta.
+    var shD = null;
+    var rowsToDelete = [];
     try{
-      var shD = _getSheetDetalle_();
+      shD = _getSheetDetalle_();
       var headD = __V_head__(shD);
       var mapD = __V_headerIndexMap__(headD);
       var idxIdF = (mapD['id_factura']!=null)?mapD['id_factura']:((mapD['id']!=null)?mapD['id']:(mapD['factura']!=null?mapD['factura']:-1));
       var idxDesc = (mapD['descripcion']!=null)?mapD['descripcion']:((mapD['producto_servicio']!=null)?mapD['producto_servicio']:-1);
       var idxCant = (mapD['cantidad']!=null)?mapD['cantidad']:-1;
+      var idxCat  = (mapD['categoria']!=null)?mapD['categoria']:((mapD['tipo']!=null)?mapD['tipo']:-1);
+
       var sucFac = (m['sucursal']!=null? data[rowIndex-1][m['sucursal']] : (m['nombresucursal']!=null? data[rowIndex-1][m['nombresucursal']] : ''));
       var last = shD.getLastRow();
-      var productosSet = {};
-      try{
-        var hojaProductos = (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2 || 'productos');
-        var shP = obtenerSheet(hojaProductos);
-        var arrP = (typeof _read==='function' ? _read(shP) : []);
-        for (var p=0;p<arrP.length;p++){ var rp=arrP[p]||{}; var nom=String(rp.nombreProducto||rp.nombre||rp.descripcion||'').trim(); if(nom) productosSet[nom]=true; }
-      }catch(e){}
-      for (var rr=2; rr<=last; rr++){
-        var rowD = shD.getRange(rr,1,1,headD.length).getValues()[0];
-        if (String(rowD[idxIdF]) === id_factura){
-          var desc = (idxDesc>=0?rowD[idxDesc]:'');
-          var cant = Number(idxCant>=0?rowD[idxCant]:0);
-          if (productosSet[desc]){ __V_updateProductoStock__(String(desc||''), String(sucFac||''), Number(cant||0)); }
+      if (last >= 2 && idxIdF >= 0){
+        var dataD = shD.getRange(2,1,last-1,headD.length).getValues();
+
+        // set de productos para determinar si una descripción es producto (cuando no hay columna categoria)
+        var productosSet = {};
+        try{
+          var hojaProductos = (env_().SH_PRODUCTOS || env_().SH_PRODUCTOS2 || 'productos');
+          var shP = obtenerSheet(hojaProductos);
+          var arrP = (typeof _read==='function' ? _read(shP) : []);
+          for (var p=0;p<arrP.length;p++){
+            var rp=arrP[p]||{};
+            var nom=String(rp.nombreProducto||rp.nombre||rp.descripcion||'').trim();
+            if(nom) productosSet[nom]=true;
+          }
+        }catch(e){}
+
+        for (var i=0; i<dataD.length; i++){
+          var rowD = dataD[i];
+          if (String(rowD[idxIdF]) === id_factura){
+            rowsToDelete.push(i+2);
+
+            try{
+              var desc = (idxDesc>=0?rowD[idxDesc]:'');
+              var cant = Number(idxCant>=0?rowD[idxCant]:0);
+              var tipo = (idxCat>=0 ? String(rowD[idxCat]||'').toLowerCase().trim() : '');
+              if (tipo === 'producto' || (!tipo && productosSet[String(desc||'').trim()])){
+                __V_updateProductoStock__(String(desc||''), String(sucFac||''), Number(cant||0));
+              }
+            }catch(e){}
+          }
         }
       }
     }catch(e){}
 
-    var shD = _getSheetDetalle_();
-    var headD = __V_head__(shD);
-    var idxIdF = __V_idxOfAny__(headD, ['id_factura','id','factura']);
-    var last = shD.getLastRow();
-    for (var rr=last; rr>=2; rr--){
-      var val = shD.getRange(rr,1,1,headD.length).getValues()[0];
-      if (String(val[idxIdF]) === id_factura){
-        shD.deleteRow(rr);
+    // Borrar las filas del detalle en bloques (menos llamadas a Sheets)
+    try{
+      if (shD && rowsToDelete.length){
+        __V_deleteRowBlocks__(shD, rowsToDelete);
       }
-    }
+    }catch(e){}
+
+    // Por último, borrar la factura
     shF.deleteRow(rowIndex);
-    return JSON.stringify({ ok:true }); 
+    return JSON.stringify({ ok:true });
   }catch(err){
     return JSON.stringify({ ok:false, message:'Error al eliminar venta: '+err });
   }
 }
+
 
 function actualizarVenta(payload, rol){
   try{
@@ -917,6 +996,7 @@ function actualizarVenta(payload, rol){
     var obj = (typeof payload==='string') ? JSON.parse(payload) : (payload||{});
     var id = String(obj.id_factura||obj.id||'').trim();
     if (!id) return JSON.stringify({ ok:false, message:'id_factura requerido' });
+
     var shF = _getSheetFacturas_();
     var shD = _getSheetDetalle_();
     var headF = __V_head__(shF);
@@ -929,57 +1009,77 @@ function actualizarVenta(payload, rol){
     var idxFechaF = (mapF['fecha']!=null) ? mapF['fecha'] :
                     (mapF['fecharegistro']!=null) ? mapF['fecharegistro'] :
                     (mapF['createdat']!=null) ? mapF['createdat'] : -1;
+    var idxSucF = (mapF['sucursal']!=null) ? mapF['sucursal'] :
+                  (mapF['nombresucursal']!=null) ? mapF['nombresucursal'] :
+                  (mapF['nombre_sucursal']!=null) ? mapF['nombre_sucursal'] : -1;
+
+    // OPT: encontrar factura con 1 sola lectura
     var lastF = shF.getLastRow();
-    var rowIndex = -1; var fechaVal = '';
-    for (var r=2; r<=lastF; r++){
-      var row = shF.getRange(r,1,1,headF.length).getValues()[0];
-      if (String(row[idxIdF]) === id){
-        rowIndex = r; fechaVal = (idxFechaF>=0 ? row[idxFechaF] : '');
+    if (lastF < 2) return JSON.stringify({ ok:false, message:'No hay datos' });
+
+    var dataF = shF.getRange(2,1,lastF-1,headF.length).getValues();
+    var rowIndex = -1; var fechaVal = ''; var rowF = null;
+
+    for (var iF=0; iF<dataF.length; iF++){
+      var rf = dataF[iF];
+      if (String(rf[idxIdF]) === id){
+        rowIndex = iF + 2;
+        rowF = rf;
+        fechaVal = (idxFechaF>=0 ? rf[idxFechaF] : '');
         break;
       }
     }
-    if (rowIndex < 0) return JSON.stringify({ ok:false, message:'No encontrado' });
+
+    if (rowIndex < 0 || !rowF) return JSON.stringify({ ok:false, message:'No encontrado' });
     if (!__V_puedeEditarFactura__(fechaVal, rol)){
       return JSON.stringify({ ok:false, message:'Fuera de ventana de edición (5 min) para rol '+rol });
     }
 
-    var rowF = shF.getRange(rowIndex,1,1,headF.length).getValues()[0];
+    // Aplicar cambios simples a la factura (totales se recalculan más abajo)
     for (var c=0;c<headF.length;c++){
       var k = __V_normalizeHeader__(headF[c]);
       if (k==='empleado') rowF[c] = obj.empleado || rowF[c];
       else if (k==='metodo_pago' || k==='metododepago' || k==='metodopago') rowF[c] = obj.metodo_pago || rowF[c];
-      else if (k==='descuento') rowF[c] = Number(__SUM_DESC__||0);
-      else if (k==='sub_total' || k==='subtotal') rowF[c] = Number(__SUM_SUB__||0);
-      else if (k==='total') rowF[c] = Number(__SUM_TOT__||0);
     }
-shF.getRange(rowIndex,1,1,headF.length).setValues([rowF]);
-var mapD = __V_headerIndexMap__(headD);
+
+    var sucFactura = (idxSucF>=0 ? String(rowF[idxSucF]||'') : '') || String(obj.sucursal||'');
+
+    var mapD = __V_headerIndexMap__(headD);
     var idxIdFacturaD = (mapD['id_factura']!=null) ? mapD['id_factura'] :
                         (mapD['id']!=null) ? mapD['id'] :
                         (mapD['factura']!=null) ? mapD['factura'] : -1;
+    var idxDescD = (mapD['descripcion']!=null)?mapD['descripcion']:(mapD['producto_servicio']!=null?mapD['producto_servicio']:-1);
+    var idxCatD  = (mapD['categoria']!=null)?mapD['categoria']:(mapD['tipo']!=null?mapD['tipo']:-1);
+    var idxCantD = (mapD['cantidad']!=null)?mapD['cantidad']:-1;
 
-    
-    // Validación de stock considerando cantidades previas de esta factura
-    try{
-      var oldQty = {};
-      var lastScan = shD.getLastRow();
-      for (var rScan=2; rScan<=lastScan; rScan++){
-        var rw = shD.getRange(rScan,1,1,headD.length).getValues()[0];
+    // OPT: leer detalle 1 sola vez, calcular oldQty y preparar borrado en bloques
+    var oldQty = {};
+    var oldRows = [];
+    var rowsToDelete = [];
+
+    var lastDAll = shD.getLastRow();
+    if (lastDAll >= 2 && idxIdFacturaD >= 0){
+      var dataDAll = shD.getRange(2,1,lastDAll-1,headD.length).getValues();
+      for (var iD=0; iD<dataDAll.length; iD++){
+        var rw = dataDAll[iD];
         if (String(rw[idxIdFacturaD]) === id){
-          var kdmap = __V_headerIndexMap__(headD);
-          var iDesc = (kdmap['descripcion']!=null)?kdmap['descripcion']
-                    : (kdmap['producto_servicio']!=null)?kdmap['producto_servicio']:-1;
-          var iCat  = (kdmap['categoria']!=null)?kdmap['categoria']
-                    : (kdmap['tipo']!=null)?kdmap['tipo']:-1;
-          var iCant = (kdmap['cantidad']!=null)?kdmap['cantidad']:-1;
-          var cat = String(iCat>=0 ? rw[iCat] : '').toLowerCase();
-          if (cat==='producto'){
-            var dsc = String(iDesc>=0 ? rw[iDesc] : '').trim();
-            var ctt = Number(iCant>=0 ? rw[iCant] : 0);
-            oldQty[dsc] = (oldQty[dsc]||0) + (isFinite(ctt)?ctt:0);
-          }
+          rowsToDelete.push(iD + 2);
+          oldRows.push(rw);
+
+          try{
+            var cat = String(idxCatD>=0 ? rw[idxCatD] : '').toLowerCase().trim();
+            if (cat === 'producto'){
+              var dsc = String(idxDescD>=0 ? rw[idxDescD] : '').trim();
+              var ctt = Number(idxCantD>=0 ? rw[idxCantD] : 0);
+              oldQty[dsc] = (oldQty[dsc]||0) + (isFinite(ctt)?ctt:0);
+            }
+          }catch(e){}
         }
       }
+    }
+
+    // Validación de stock considerando cantidades previas de esta factura
+    try{
       var req = {};
       var itemsChk = (obj.items || []);
       for (var ii=0; ii<itemsChk.length; ii++){
@@ -994,7 +1094,7 @@ var mapD = __V_headerIndexMap__(headD);
       var insuf = [];
       for (var nombreP in req){
         if (!req.hasOwnProperty(nombreP)) continue;
-        var disp = __V_getProductoStock__(nombreP, rowF[idxSucF] || obj.sucursal || '');
+        var disp = __V_getProductoStock__(nombreP, sucFactura);
         var disponibleTotal = Number(disp||0) + Number(oldQty[nombreP]||0);
         var solicitado = Number(req[nombreP]||0);
         if (disponibleTotal < solicitado){
@@ -1005,28 +1105,36 @@ var mapD = __V_headerIndexMap__(headD);
         return JSON.stringify({ ok:false, code:'STOCK_INSUF', message:'Stock insuficiente', details: insuf });
       }
     }catch(_){}
-var lastD = shD.getLastRow();
-    for (var rr=lastD; rr>=2; rr--){
-      var rowD = shD.getRange(rr,1,1,headD.length).getValues()[0];
-      if (String(rowD[idxIdFacturaD]) === id){
-        var mapOld = __V_headerIndexMap__(headD);
-        var idxDescOld = (mapOld['descripcion']!=null)?mapOld['descripcion']:(mapOld['producto_servicio']!=null?mapOld['producto_servicio']:-1);
-        var idxCantOld = (mapOld['cantidad']!=null)?mapOld['cantidad']:-1;
-        var descOld = (idxDescOld>=0?rowD[idxDescOld]:'');
-        var cantOld = Number(idxCantOld>=0?rowD[idxCantOld]:0);
-        __V_updateProductoStock__(String(descOld||''), String(rowF[(mapF['sucursal']!=null?mapF['sucursal']:(mapF['nombresucursal']!=null?mapF['nombresucursal']:-1))]||''), Number(cantOld||0));
-        shD.deleteRow(rr);
-      }
-    }
 
+    // Restaurar stock de líneas anteriores (si corresponde) y borrar detalle en bloques
+    try{
+      for (var j=0; j<oldRows.length; j++){
+        var rowOld = oldRows[j];
+        var catOld = String(idxCatD>=0 ? rowOld[idxCatD] : '').toLowerCase().trim();
+        if (idxCatD < 0 || catOld === 'producto'){
+          var descOld = (idxDescD>=0 ? rowOld[idxDescD] : '');
+          var cantOld = Number(idxCantD>=0 ? rowOld[idxCantD] : 0);
+          __V_updateProductoStock__(String(descOld||''), String(sucFactura||''), Number(cantOld||0));
+        }
+      }
+    }catch(e){}
+    try{
+      if (rowsToDelete.length){
+        __V_deleteRowBlocks__(shD, rowsToDelete);
+      }
+    }catch(e){}
+
+    // Insertar nuevas líneas del detalle
     var items = obj.items || [];
     if (items && items.length){
       var nextDetId = __V_nextIdGeneric__(shD, ['id_detalle','iddetalle']);
       var rowsD = [];
       __SUM_SUB__=0; __SUM_DESC__=0; __SUM_TOT__=0;
+
       for (var i=0;i<items.length;i++){
         var it = items[i];
         var rowN = new Array(headD.length);
+
         for (var c2=0;c2<headD.length;c2++){
           var kd = __V_normalizeHeader__(headD[c2]);
           var vd = '';
@@ -1047,7 +1155,9 @@ var lastD = shD.getLastRow();
           else vd = '';
           rowN[c2] = vd;
         }
+
         rowsD.push(rowN);
+
         try{
           var __idxCant = __V_idxOfAny__(headD,['cantidad','cant']);
           var __idxPre  = __V_idxOfAny__(headD,['precio','precio_unitario']);
@@ -1061,36 +1171,39 @@ var lastD = shD.getLastRow();
           __SUM_SUB__ += __s; __SUM_DESC__ += __d; __SUM_TOT__ += __t;
         }catch(e){}
       }
+
       if (rowsD.length) shD.getRange(shD.getLastRow()+1,1,rowsD.length,headD.length).setValues(rowsD);
     }
-    try{
-          // === Recalcular totales escritos en FACTURAS y validar que no sean cero ===
+
+    // Validación total y escritura final de factura
     if (!isFinite(__SUM_TOT__) || __SUM_TOT__ < 0.005){
       return JSON.stringify({ ok:false, code:'TOTAL_CERO', message:'El Total no puede ser L.0.00' });
     }
-    try{
-      var __rowF2__ = shF.getRange(rowIndex,1,1,headF.length).getValues()[0];
-      var __iSub2__ = __V_idxOfAny__(headF, ['sub_total','subtotal']);
-      var __iDesc2__= __V_idxOfAny__(headF, ['descuento']);
-      var __iTot2__ = __V_idxOfAny__(headF, ['total']);
-      if (__iSub2__>=0) __rowF2__[__iSub2__] = Number(__SUM_SUB__||0);
-      if (__iDesc2__>=0) __rowF2__[__iDesc2__] = Number(__SUM_DESC__||0);
-      if (__iTot2__>=0) __rowF2__[__iTot2__] = Number(__SUM_TOT__||0);
-      shF.getRange(rowIndex,1,1,headF.length).setValues([__rowF2__]);
-    }catch(__e2__){}
 
-    for (var k=0; k<items.length; k++){
+    for (var cc=0; cc<headF.length; cc++){
+      var kk = __V_normalizeHeader__(headF[cc]);
+      if (kk==='descuento') rowF[cc] = Number(__SUM_DESC__||0);
+      else if (kk==='sub_total' || kk==='subtotal') rowF[cc] = Number(__SUM_SUB__||0);
+      else if (kk==='total') rowF[cc] = Number(__SUM_TOT__||0);
+    }
+    shF.getRange(rowIndex,1,1,headF.length).setValues([rowF]);
+
+    // Descontar stock por nuevas líneas
+    try{
+      for (var k=0; k<(items||[]).length; k++){
         var it2 = items[k]||{};
         if (String(it2.tipo||'').toLowerCase()==='producto'){
-          __V_updateProductoStock__(String(it2.descripcion||''), String(rowF[(mapF['sucursal']!=null?mapF['sucursal']:(mapF['nombresucursal']!=null?mapF['nombresucursal']:-1))]||''), -Number(it2.cantidad||0));
+          __V_updateProductoStock__(String(it2.descripcion||''), String(sucFactura||''), -Number(it2.cantidad||0));
         }
       }
     }catch(e){}
-    return JSON.stringify({ ok:true }); 
+
+    return JSON.stringify({ ok:true });
   }catch(err){
     return JSON.stringify({ ok:false, message:'Error al actualizar venta: '+err });
   }
 }
+
 
 function listarEmpleadosActivos(sucursal){
   try{
@@ -1121,3 +1234,4 @@ function listarEmpleadosActivos(sucursal){
     return JSON.stringify({ ok:false, message: 'Error al listar empleados: '+err });
   }
 }
+

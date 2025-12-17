@@ -264,7 +264,7 @@ function Ventas(){
         }catch(err){ message.error(String(err)); }
       })
       .withFailureHandler(function(err){ message.error(String((err&&err.message)||err)); })
-      .listarDetalleFactura(String(rec.id_factura));
+      .listarDetalleFactura(String(rec.id_factura), String(rec.sucursal||''));
   }
 
   
@@ -420,7 +420,7 @@ function Ventas(){
 }catch(_){}
       })
       .withFailureHandler(function(err){ console && console.error && console.error(err); })
-      .listarDetalleFactura(String(rec.id_factura));
+      .listarDetalleFactura(String(rec.id_factura), String(rec.sucursal||''));
   }
 
   function confirmarEliminar(rec){
